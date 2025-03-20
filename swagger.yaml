@@ -197,6 +197,61 @@ paths:
           description: Event details retrieved successfully
         "404":
           description: Event not found
+
+    put:
+      summary: Update Event Details
+      tags:
+        - Events
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Name of the event
+                date:
+                  type: string
+                  format: date-time
+                  description: Date and time of the event
+                location:
+                  type: string
+                  description: Venue or location of the event
+                description:
+                  type: string
+                  description: Details about the event
+      responses:
+        "200":
+          description: Event updated successfully
+        "400":
+          description: Invalid request data
+        "404":
+          description: Event not found
+    
+    delete:
+      summary: Delete Event
+      tags:
+        - Events
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Event deleted successfully
+        "404":
+          description: Event not found
+
   
   /events/{eventId}/tickets:
     get:
@@ -214,6 +269,21 @@ paths:
           description: List of tickets retrieved successfully
         "404":
           description: No tickets found
+    head:
+      summary: Check Ticket Availability
+      tags:
+        - Tickets
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tickets are available for booking
+        "404":
+          description: No tickets available or event not found
   
   /tickets/refund:
     post:
@@ -395,5 +465,163 @@ paths:
           description: Event created successfully
         "400":
           description: Bad request
+  
+  /vendors/payment-methods/{methodId}:
+    put:
+      summary: Update Payment Method
+      tags:
+        - Vendors
+      parameters:
+        - name: methodId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Name of the payment method (e.g., "Credit Card", "PayPal")
+                details:
+                  type: object
+                  description: Additional details for the payment method
+                  properties:
+                    accountNumber:
+                      type: string
+                      description: Account number or identifier
+                    expiryDate:
+                      type: string
+                      format: date
+                      description: Expiry date for the payment method
+      responses:
+        "200":
+          description: Payment method updated successfully
+        "400":
+          description: Invalid request data
+        "404":
+          description: Payment method not found
+
+    delete:
+      summary: Remove Payment Method
+      tags:
+        - Vendors
+      parameters:
+        - name: methodId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Payment method removed successfully
+        "404":
+          description: Payment method not found
+
+  /users/{userId}:
+    put:
+      summary: Update User Profile
+      tags:
+        - Users
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Full name of the user
+                email:
+                  type: string
+                  format: email
+                  description: User's email address
+                phone:
+                  type: string
+                  description: Contact number of the user
+                address:
+                  type: string
+                  description: User's address
+                profilePicture:
+                  type: string
+                  format: uri
+                  description: URL of the user's profile picture
+      responses:
+        "200":
+          description: User profile updated successfully
+        "400":
+          description: Invalid request data
+        "404":
+          description: User not found
+  
+  /tickets/{ticketId}:
+    delete:
+      summary: Cancel a Ticket
+      tags:
+        - Tickets
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ticket canceled successfully
+        "400":
+          description: Ticket cannot be canceled 
+        "404":
+          description: Ticket not found
+
+    head:
+      summary: Check Ticket Status
+      tags:
+        - Tickets
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ticket exists and is available for cancellation
+        "404":
+          description: Ticket not found
+
+  /users/{userId}/images/{imageId}:
+    delete:
+      summary: Delete Uploaded Image
+      tags:
+        - Users
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Image deleted successfully
+        "404":
+          description: Image not found
+
+
 
 
