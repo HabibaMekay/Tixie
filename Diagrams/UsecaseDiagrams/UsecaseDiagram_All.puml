@@ -1,0 +1,42 @@
+@startuml UsecaseDiagram_All
+left to right direction
+actor user
+actor Vendor
+
+rectangle "Ticketing System"{
+    usecase "Book a Ticket" as UC1
+    usecase "Search Events" as UC2
+    usecase "Filter Events by Price" as UC3
+    usecase "Make a Payment" as UC4
+    usecase "Login" as UC5
+    usecase "Create an Account" as UC6
+    usecase "Use Loyalty Points" as UC7
+    usecase "Browse Events" as UC9
+    usecase "Add event" as UC10
+    usecase "Add payment method" as UC11
+    usecase "View ticket sales" as UC12
+    usecase "Log out" as UC13
+    usecase "Upload Event Pictures" as UC14
+
+
+
+user -->UC1
+user -->UC2
+user -->UC3
+user -->UC4
+user -->UC5
+user -->UC6
+user -->UC7
+user -->UC9
+user -->UC13
+user -->UC14
+Vendor --> UC5
+Vendor -->UC6
+Vendor --> UC10
+Vendor --> UC11
+Vendor --> UC12
+Vendor --> UC13
+
+
+}
+@enduml

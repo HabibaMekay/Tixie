@@ -1,0 +1,24 @@
+@startuml UsecaseDiagram_Vendor
+left to right direction
+
+left to right direction
+
+actor Vendor
+
+rectangle "Ticketing System" {
+usecase "Login" as UC1
+usecase "Add event" as UC2
+usecase "Add payment method" as UC3
+usecase "View ticket sales" as UC4
+usecase "Create an Account" as UC5
+usecase "Log out" as UC6
+}
+
+Vendor --> UC1
+Vendor --> UC2
+Vendor --> UC3
+Vendor --> UC4
+Vendor --> UC5
+Vendor --> UC6
+
+@enduml
