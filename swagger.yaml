@@ -1,0 +1,399 @@
+#download extention "swagger preview"
+
+openapi: 3.0.0
+
+info:
+  title: Ticketing System API
+  description: >
+    API for users and vendors to manage events and ticket sales.
+    
+    Features:
+      - The system must allow users and vendors to create an account.
+
+      - The system shall allow users to log in as normal users or vendors securely.
+      - The system must allow users to search for events.
+      - The system must allow users to filter events by price.
+      - The system must allow users to browse events.
+      - The system shall allow users to buy e-tickets that contain a scannable QR code.
+      - The system must allow users to make payments using different payment methods.
+      - The system must allow vendors to view ticket sales to track earnings.
+      - The system shall allow vendor users to create and add events to sell tickets.
+      - The system shall allow vendor users to select from multiple payment methods when creating events (Visa, MasterCard, Cash on Arrival, etc.).
+      - The system shall grant users loyalty points that can be redeemed for discounts, ticket upgrades, or free tickets.
+      - The system shall provide recommendations for users using machine learning models for a more personalized experience.
+      - The system shall provide push notifications such as event reminders and event suggestions.
+      - The system shall allow users to upload pictures of their attended events or venue for future users booking tickets in the same venue or for the same artist.
+      - The system must allow users and vendors to log out to secure their accounts.
+
+  version: "1.0.0"
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: https://api.ticketing-system.com/v1
+    description: Production Server
+  - url: http://localhost:5000
+    description: Local Development Server
+
+paths:
+  /users/{userId}/upload-image:
+    post:
+      summary: Upload an event picture
+      tags:
+        - Users
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Image uploaded successfully
+        "400":
+          description: Bad request
+        "401":
+          description: Unauthorized
+
+  /users/{userId}/images:
+    get:
+      summary: View uploaded event pictures
+      tags:
+        - Users
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successfully retrieved images
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  images:
+                    type: array
+                    items:
+                      type: string
+                      format: uri
+        "404":
+          description: No images found
+
+
+  /tickets/book:
+    post:
+      summary: Buy a ticket
+      tags:
+        - Users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                  example: "1234A"
+                eventId:
+                  type: string
+                  example: "9876B"
+                quantity:
+                  type: integer
+                  example: 2
+      responses:
+        "200":
+          description: Ticket successfully booked
+        "400":
+          description: Bad request
+        "401":
+          description: Unauthorized
+
+
+  /register:
+    post:
+      summary: Create Account
+      tags:
+        - Users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        "201":
+          description: Account successfully created
+        "400":
+          description: Bad request
+ 
+  /login:
+    post:
+      summary: Login
+      tags:
+        - Users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Login successful
+        "401":
+          description: Unauthorized
+
+  /logout:
+    post:
+      summary: Logout
+      tags:
+        - Users
+      responses:
+        "200":
+          description: Logout successful
+
+  /events/{eventId}:
+    get:
+      summary: View Event Details
+      tags:
+        - Events
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Event details retrieved successfully
+        "404":
+          description: Event not found
+  
+  /events/{eventId}/tickets:
+    get:
+      summary: View Tickets for an Event
+      tags:
+        - Tickets
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of tickets retrieved successfully
+        "404":
+          description: No tickets found
+  
+  /tickets/refund:
+    post:
+      summary: Refund a Ticket
+      tags:
+        - Tickets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                ticketId:
+                  type: string
+      responses:
+        "200":
+          description: Refund successful
+        "400":
+          description: Bad request
+        "401":
+          description: Unauthorized
+
+  /payment:
+    post:
+      summary: Make Payment
+      tags:
+        - Payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                amount:
+                  type: number
+                paymentMethod:
+                  type: string
+      responses:
+        "200":
+          description: Payment successful
+        "400":
+          description: Bad request
+        "401":
+          description: Unauthorized
+
+  /vendors/payment-methods:
+    get:
+      summary: Choose Payment Method
+      tags:
+        - Vendors
+      responses:
+        "200":
+          description: List of available payment methods
+
+  /loyalty-points:
+    get:
+      summary: View Loyalty Points
+      tags:
+        - Users
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Loyalty points retrieved successfully
+
+  /events/{eventId}/payment-methods:
+    post:
+      summary: Add Payment Method
+      tags:
+        - Vendors
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                method:
+                  type: string
+      responses:
+        "201":
+          description: Payment method added successfully
+        "400":
+          description: Bad request
+
+  /vendors/{vendorId}/sales:
+    get:
+      summary: View Ticket Sales
+      tags:
+        - Vendors
+      parameters:
+        - name: vendorId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ticket sales retrieved successfully
+
+  /recommendations:
+    get:
+      summary: Get Personalized Recommendations
+      tags:
+        - Users
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of recommended events retrieved successfully
+  
+  /events:
+    get:
+      summary: Browse Events
+      tags:
+        - Events
+      parameters:
+        - name: search
+          in: query
+          description: Search for events
+          required: false
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Sort events by price
+          required: false
+          schema:
+            type: string
+            enum: [price_asc, price_desc]
+      responses:
+        "200":
+          description: List of events retrieved successfully
+
+    post:
+      summary: Add Event
+      tags:
+        - Vendors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vendorId:
+                  type: string
+                eventName:
+                  type: string
+                date:
+                  type: string
+                  format: date
+                location:
+                  type: string
+                price:
+                  type: number
+      responses:
+        "201":
+          description: Event created successfully
+        "400":
+          description: Bad request
+
+
