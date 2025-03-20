@@ -14,7 +14,7 @@ rectangle "Ticketing System"{
     usecase "Browse Events" as UC9
     usecase "Log out" as UC13
     usecase "Upload Event Pictures" as UC14
-
+    usecase "Receive Event Recommendations" as UC15
 
 
 
@@ -28,6 +28,7 @@ user -->UC7
 user -->UC9
 user -->UC13
 user -->UC14
+user -->UC15
 
 
 
