@@ -437,6 +437,27 @@ paths:
       responses:
         "200":
           description: List of events retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    eventId:
+                      type: string
+                    eventName:
+                      type: string
+                    date:
+                      type: string
+                      format: date-time
+                    location:
+                      type: string
+                    price:
+                      type: number
+        "400":
+          description: Invalid request parameters
+
 
     post:
       summary: Add Event
