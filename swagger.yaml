@@ -36,6 +36,17 @@ servers:
   - url: http://localhost:5000
     description: Local Development Server
 
+components:
+  securitySchemes:
+    OAuth2Auth:
+      type: oauth2
+      description: "OAuth 2.0 authentication for secure user login"
+      flows:
+        password:
+          tokenUrl: https://auth.ticketing-system.com/oauth/token
+          scopes: {}
+
+
 paths:
   /users/{userId}/upload-image:
     post:
@@ -154,6 +165,8 @@ paths:
       summary: Login
       tags:
         - Users
+      security:
+        - OAuth2Auth: []
       requestBody:
         required: true
         content:
