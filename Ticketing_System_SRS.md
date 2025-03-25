@@ -62,7 +62,147 @@
 ### Fault Tolerance:
 - The system must implement Circuit Breaker patterns to gracefully degrade features.
 - The system must implement a retry mechanism with exponential backoff for failed API calls.
+## Back-of-the-Envelope Testing
 
+### 1. Load Testing Calculations
+
+#### Concurrent Users
+- **Peak Concurrent Users**: 200 (based on requirements)
+- **Total Registered Users**: ~5,000 (estimated total user base)
+- **Average Session Duration**: ~15-20 minutes (realistic browsing time)
+- **Requests per User per Session**: ~30-40 (including searches, filters, and page loads)
+- **Total Requests per Hour**: 200 users × 35 requests = 7,000 requests/hour
+- **Requests per Second**: 7,000/3600 ≈ 2 requests/second
+
+*Got these numbers from similar systems. Might need to bump up during big events.*
+
+### 2. Database Load (PostgreSQL)
+
+#### Data Size Estimation
+| Data Type | Count | Size per Item | Total Size |
+|-----------|-------|---------------|------------|
+| Users | 5,000 | 2KB | 10MB |
+| Events | 500 | 10KB | 5MB |
+| Tickets | 50,000 | 3KB | 150MB |
+| Images | 25,000 | 1MB | 25GB |
+| **Total** | | | **~25.2GB** |
+
+*Image sizes are rough - depends on quality settings*
+
+### 3. Caching Requirements (Redis)
+
+#### Cache Size Estimation
+| Cache Type | Count | Size per Item | Total Size |
+|------------|-------|---------------|------------|
+| Active Events | 500 | 10KB | 5MB |
+| Popular Event Details | 50 | 20KB | 1MB |
+| User Sessions | 200 | 5KB | 1MB |
+| **Total Cache Size** | | | **~7MB** |
+
+*Doubled the numbers to be safe*
+
+### 4. Response Time Budget
+
+#### 3-Second Response Time Target (80% of requests)
+| Component | Time Budget |
+|-----------|-------------|
+| Database Query | 800ms |
+| Cache Lookup | 100ms |
+| Business Logic | 1.5s |
+| Network Latency | 300ms |
+| Buffer | 300ms |
+| **Total** | **3s** |
+
+*These are ideal numbers - reality might be slower*
+
+### 5. Storage Requirements
+
+#### Monthly Growth
+| Data Type | Monthly Growth | Size per Item | Monthly Storage |
+|-----------|----------------|---------------|-----------------|
+| New Users | 250 | 2KB | 500KB |
+| New Events | 50 | 10KB | 500KB |
+| New Tickets | 5,000 | 3KB | 15MB |
+| New Images | 2,500 | 1MB | 2.5GB |
+| **Total Monthly Growth** | | | **~2.5GB** |
+| **Annual Growth** | | | **~30GB** |
+
+*Expect double these numbers during peak season*
+
+### 6. Bandwidth Requirements
+
+#### Per Request Analysis
+- **Average Response Size**: 100KB (including images and assets)
+- **Requests per Second**: 2
+- **Bandwidth**: 2 × 100KB = 200KB/s
+- **Peak Hour Bandwidth**: 200KB × 3600 = 720MB/hour
+- **Daily Bandwidth**: 720MB × 24 = 17.28GB/day
+
+*Double this for peak times*
+
+### 7. Service Scaling Points
+
+#### Microservices Deployment
+| Service | Instances | Purpose |
+|---------|-----------|---------|
+| Booking Service | 2 | Primary + Backup |
+| Payment Service | 2 | Primary + Backup |
+| Analytics Service | 1 | Single Instance |
+| Image Service | 1 | Single Instance |
+| **Total Instances** | **6** | |
+
+*Might need more during busy times*
+
+### 8. Cost Estimation (Monthly)
+
+#### Infrastructure Costs
+| Component | Quantity | Cost per Unit | Monthly Cost |
+|-----------|----------|---------------|--------------|
+| Compute | 6 instances | $75 | $450 |
+| Database | 1 instance | $200 | $200 |
+| Cache | 1 instance | $100 | $100 |
+| Storage | 100GB | $0.15/GB | $15 |
+| Bandwidth | 1TB | $0.15/GB | $150 |
+| **Total Monthly Cost** | | | **~$915** |
+
+*Cloud costs vary by region*
+
+### 9. Failure Scenarios
+
+#### Recovery Time Budget
+| Scenario | Recovery Time |
+|----------|---------------|
+| Database Failover | 45-60 seconds |
+| Service Restart | 15-20 seconds |
+| Cache Rebuild | 10-15 minutes |
+| Image Service Recovery | 30-45 seconds |
+
+*Add buffer time for real-world scenarios*
+
+### 10. Security Considerations
+
+#### Token Storage Requirements
+| Token Type | Size |
+|------------|------|
+| JWT Token | ~2KB |
+| Refresh Token | ~2KB |
+| Session Data | ~5KB |
+| **Total per User** | **~9KB** |
+
+*Token size might increase with new features*
+
+### Quick Notes
+- Numbers are rough estimates
+- Double everything for peak season
+- Keep an eye on actual usage
+- Might need to adjust as we add features
+
+### References
+*Checked these out for numbers:*
+- [Google Cloud Docs](https://cloud.google.com/architecture/load-testing)
+- [AWS Docs](https://aws.amazon.com/architecture/well-architected/)
+- [PostgreSQL Docs](https://www.postgresql.org/docs/current/performance-tips.html)
+- [Redis Docs](https://redis.io/topics/memory-optimization)
 ## Architectural Drivers (Quality Attributes)
 
 ### Performance & Scalability
