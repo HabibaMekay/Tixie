@@ -120,4 +120,24 @@
 
 **Note:** HEAD is faster so we could use it to check ticket availability before booking to help prevent race conditions.
 
+## **System Circuit Breaker Resilience Strategies**
 
+Since our system will utilize both *HTTP requests* and *WebSockets* (check [ADRs/CommunicationBetweenServices_ADR.md](ADRs/CommunicationBetweenServices_ADR.md) and [ADRs/Connection_ADR.md](ADRs/Connection_ADR.md), respectively), so we need to have **two different circuit breakers**:  
+
+### **1. HTTP Request Circuit Breaker**  
+- **Retries**: Apply retry with **exponential backoff**, starting at **5 seconds**.  
+  - **Justification**: Starting with a small backoff and increasing the timeout with every retry helps lighten the load on the service, allowing it to recover.  
+- **Fallback**: The service will be deemed **unavailable after 4 failed retries**.  
+  - **Justification**: If the service fails **4 consecutive times**, it will be marked unavailable in the application, only affecting dependent services. *(e.g., if ticket browsing fails, all booking operations will be stopped until browsing is available.)* 
+- **Cooldown**: the system should wait **2 minutes** before attempting to reintegrate the failed service.  
+  - **Justification**:  This ensures the service has a reasonable time period to stabilize before resuming operations, preventing unnecessary retries and load.
+
+### **2. WebSocket Circuit Breaker**  
+- **Retries**: Apply retry **every 40 seconds**.  
+  - **Justification**: Since each retry involves multiple pings to the WebSocket, a **longer timeout** balances efficiency and system load.  
+- **Fallback**: The service will be deemed **unavailable after 2 failed retries**.  
+  - **Justification**: Given the **long retry interval**, the service has ample time to recover. If it **fails twice consecutively**, it will be marked unavailable, only affecting dependent services. *(e.g., if ticket booking fails, all payments will be stopped until booking is available.)*  
+- **Cooldown**: the system should wait **5 minutes** before attempting to reintegrate the failed service.  
+  - **Justification**: Since WebSockets involve persistent connections, a longer cooldown gives the service more time to stabilize.
+
+Further details can be found in [ADRs/SystemResilience_ADR.md](ADRs/SystemResilience_ADR.md).  
