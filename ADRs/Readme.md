@@ -1,0 +1,1 @@
+### ADRs were written using the [ADR template of the Markdown Any Decision Records (MADR) project](https://github.com/joelparkerhenderson/architecture-decision-record/tree/main/locales/en/templates/decision-record-template-of-the-madr-project)
