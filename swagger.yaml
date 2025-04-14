@@ -48,7 +48,7 @@ components:
 
 
 paths:
-  /users/{userId}/upload-image:
+  /v1/users/{userId}/upload-image:
     post:
       summary: Upload an event picture
       tags:
@@ -77,7 +77,7 @@ paths:
         "401":
           description: Unauthorized
 
-  /users/{userId}/images:
+  /v1/users/{userId}/images:
     get:
       summary: View uploaded event pictures
       tags:
@@ -105,7 +105,7 @@ paths:
           description: No images found
 
 
-  /tickets/book:
+  /v1/tickets/book:
     post:
       summary: Buy a ticket
       tags:
@@ -135,7 +135,7 @@ paths:
           description: Unauthorized
 
 
-  /register:
+  /v1/register:
     post:
       summary: Create Account
       tags:
@@ -160,7 +160,7 @@ paths:
         "400":
           description: Bad request
  
-  /login:
+  /v1/login:
     post:
       summary: Login
       tags:
@@ -185,7 +185,7 @@ paths:
         "401":
           description: Unauthorized
 
-  /logout:
+  /v1/logout:
     post:
       summary: Logout
       tags:
@@ -194,7 +194,7 @@ paths:
         "200":
           description: Logout successful
 
-  /events/{eventId}:
+  /v1/events/{eventId}:
     get:
       summary: View Event Details
       tags:
@@ -266,7 +266,7 @@ paths:
           description: Event not found
 
   
-  /events/{eventId}/tickets:
+  /v1/events/{eventId}/tickets:
     get:
       summary: View Tickets for an Event
       tags:
@@ -298,7 +298,7 @@ paths:
         "404":
           description: No tickets available or event not found
   
-  /tickets/refund:
+  /v1/tickets/refund:
     post:
       summary: Refund a Ticket
       tags:
@@ -322,7 +322,7 @@ paths:
         "401":
           description: Unauthorized
 
-  /payment:
+  /v1/payment:
     post:
       summary: Make Payment
       tags:
@@ -348,7 +348,7 @@ paths:
         "401":
           description: Unauthorized
 
-  /vendors/payment-methods:
+  /v1/vendors/payment-methods:
     get:
       summary: Choose Payment Method
       tags:
@@ -357,7 +357,7 @@ paths:
         "200":
           description: List of available payment methods
 
-  /loyalty-points:
+  /v1/loyalty-points:
     get:
       summary: View Loyalty Points
       tags:
@@ -372,7 +372,7 @@ paths:
         "200":
           description: Loyalty points retrieved successfully
 
-  /events/{eventId}/payment-methods:
+  /v1/events/{eventId}/payment-methods:
     post:
       summary: Add Payment Method
       tags:
@@ -398,7 +398,7 @@ paths:
         "400":
           description: Bad request
 
-  /vendors/{vendorId}/sales:
+  /v1/vendors/{vendorId}/sales:
     get:
       summary: View Ticket Sales
       tags:
@@ -413,7 +413,7 @@ paths:
         "200":
           description: Ticket sales retrieved successfully
 
-  /recommendations:
+  /v1/recommendations:
     get:
       summary: Get Personalized Recommendations
       tags:
@@ -428,7 +428,7 @@ paths:
         "200":
           description: List of recommended events retrieved successfully
   
-  /events:
+  /v1/events:
     get:
       summary: Browse Events
       tags:
@@ -500,7 +500,7 @@ paths:
         "400":
           description: Bad request
   
-  /vendors/payment-methods/{methodId}:
+  /v1/vendors/payment-methods/{methodId}:
     put:
       summary: Update Payment Method
       tags:
@@ -556,7 +556,7 @@ paths:
         "404":
           description: Payment method not found
 
-  /users/{userId}:
+  /v1/users/{userId}:
     put:
       summary: Update User Profile
       tags:
@@ -599,7 +599,7 @@ paths:
         "404":
           description: User not found
   
-  /tickets/{ticketId}:
+  /v1/tickets/{ticketId}:
     delete:
       summary: Cancel a Ticket
       tags:
@@ -634,7 +634,7 @@ paths:
         "404":
           description: Ticket not found
 
-  /users/{userId}/images/{imageId}:
+  /v1/users/{userId}/images/{imageId}:
     delete:
       summary: Delete Uploaded Image
       tags:
