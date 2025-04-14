@@ -1,0 +1,8 @@
+CREATE TABLE ticket (
+    id SERIAL PRIMARY KEY,
+    event_id INT NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+);
