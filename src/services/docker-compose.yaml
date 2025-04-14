@@ -14,3 +14,9 @@ services:
       POSTGRES_DB: ticket_db
     ports:
       - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./ticket-service/internal/db/init:/docker-entrypoint-initdb.d
+
+volumes:
+  db-data:
