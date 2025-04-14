@@ -29,7 +29,7 @@ const concurrencyLimiter= async (req, res, next) => {
     next();
   } catch (err) {
     console.error('[Concurrency] Error:', err);
-    next(); // Pass the error to the next middleware
+    next(); // Pass the error to the next middleware since they work in sequence
   }
 };
 

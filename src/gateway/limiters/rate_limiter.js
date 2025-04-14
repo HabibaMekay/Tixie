@@ -19,12 +19,12 @@ const slidingWindowRateLimiter = async (req, res, next) => {
     }
     // Add current request with timestamp
     await redis.zadd(key, now, `${now}-${Math.random()}`); // use unique member
-    await redis.pexpire(key, WINDOW_SIZE); // expire the key after the window
+    await redis.pexpire(key, WINDOW_SIZE); // expire the key after the window has passed
 
     next();
   } catch (err) {
     console.error('[SlidingWindowLimiter] Redis error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error' }); // this is the last middleware in the chain so we can just return a result
   }
 };
 

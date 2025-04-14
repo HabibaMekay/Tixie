@@ -11,6 +11,11 @@ const PORT = process.env.PORT || 8083;
 app.use(cors());
 app.use(express.json());
 
+app.use((req, res, next) => {
+  res.setHeader('X-Gateway-Instance', process.env.INSTANCE_NAME);
+  next();
+});
+
 app.use('/api', concurrencyLimiter);
 app.use('/api', throttlingLimiter);
 app.use('/api', rateLimiter);

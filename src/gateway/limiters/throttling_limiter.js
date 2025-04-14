@@ -18,12 +18,13 @@ const throttlingMiddleware = async (req, res, next) => {
         retryIn: `${wait}ms`,
       });
     }
-
-    await redis.set(key, now, 'PX', WINDOW_MS); // set expiration for cleanup
+// set expiration for cleanup for keys without an already made timer or option 'PX'.
+// there were others but this seemed the most suitable
+    await redis.set(key, now, 'PX', WINDOW_MS); 
     next();
   } catch (err) {
     console.error('[THROTTLING ERROR]', err);
-    next(); // fail open
+    next(); // Passing the error to the next middleware since they work in sequence
   }
 };
 
