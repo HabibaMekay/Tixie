@@ -1,15 +1,25 @@
 package db
 
 import (
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq" // <-- this line makes sure the "postgres" driver is registered!
+	_ "github.com/lib/pq" // postgres driver
 )
 
 // NewDB initializes a new database connection using sqlx.
 func NewDB() *sqlx.DB {
-	connStr := "host=db port=5432 user=postgres password=postgres dbname=ticket_db sslmode=disable"
+	connStr := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		os.Getenv("DB_HOST"),
+		os.Getenv("DB_PORT"),
+		os.Getenv("DB_USER"),
+		os.Getenv("DB_PASSWORD"),
+		os.Getenv("DB_NAME"),
+		os.Getenv("DB_SSLMODE"),
+	)
 	db, err := sqlx.Open("postgres", connStr)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
