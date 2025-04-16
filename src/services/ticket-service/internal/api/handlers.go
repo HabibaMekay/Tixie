@@ -1,9 +1,9 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"strconv"
-
 	"ticket-service/internal/db/models"
 	"ticket-service/internal/db/repos"
 
@@ -22,6 +22,7 @@ func NewHandler(repo *repos.TicketRepository) *Handler {
 
 // GetTicketByID retrieves a ticket by its ID.
 func (h *Handler) GetTicketByID(c *gin.Context) {
+	log.Println("GetTicketByID called")
 	ticketID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket ID"})
