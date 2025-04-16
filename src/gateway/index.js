@@ -24,12 +24,12 @@ app.use('/api', concurrencyLimiter);
 app.use('/api', throttlingLimiter);
 app.use('/api', rateLimiter);
 
-console.log(`[PROXY] Proxying request to ${targetService}:8082`),
+console.log(`[PROXY] Proxying request to ${targetService}`),
 app.use('/api/v1/tickets', createProxyMiddleware({
   target: targetService,
   changeOrigin: true,
   pathRewrite: {
-    '^/api/v1': '',
+    '^/api/v1/tickets': '',
   },
   onProxyReq: (proxyReq, req, res) => {
     console.log(`[PROXY] ${req.method} ${req.originalUrl} → ${targetService}/tickets${req.url}`);

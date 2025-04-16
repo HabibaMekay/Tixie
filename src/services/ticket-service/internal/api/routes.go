@@ -11,7 +11,7 @@ func SetupRoutes(r *gin.Engine, repo *repos.TicketRepository) {
 	handler := NewHandler(repo)
 
 	// API routes for tickets
-	tickets := r.Group("/tickets")
+	tickets := r.Group("")
 	{
 		tickets.GET("/:id", handler.GetTicketByID)
 		// tickets.GET("", handler.GetTicketsByEventID)
