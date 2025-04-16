@@ -85,6 +85,23 @@ services:
       - db-network
       - gateway3-net
 
+  payment:
+      build:
+        context: ./services/payment
+      ports:
+        - "8088:8088"
+      env_file:
+        - ./services/payment/.env
+      restart: unless-stopped
+
+  auth:
+    build:
+      context: ./services/auth
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./services/auth/.env
+    restart: unless-stopped
 
   gateway1:
     build:

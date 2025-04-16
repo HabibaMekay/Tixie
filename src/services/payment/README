@@ -1,0 +1,32 @@
+here are what to install
+
+```bash
+go get github.com/stripe/stripe-go
+go get github.com/gorilla/mux
+```
+
+run:
+```bash
+docker run -p 8088:8088 payment-service
+```
+
+how to test via postman:
+first in teeminal: run main.go (duh)
+
+second, on postman:
+method: POST
+url: http://localhost:8088/simulate-webhook
+headers: {Content-Type:application/json}
+body: keep empty
+
+third, check status from terminal: "[date] [time] 2025/04/16 23:06:05 simulated PaymentIntent succeeded"
+
+or check the function itself:
+mehtod: POST
+url:http://localhost:8088/create-payment-intent
+headers: {Content-Type:application/json}
+body: { amount: (insert the amount you want)}
+
+success response: {
+    "client_secret": "pi_3R..."
+}

@@ -1,0 +1,46 @@
+the downloads needed
+
+```bash
+go get github.com/joho/godotenv
+
+go get github.com/golang-jwt/jwt/v5
+go get github.com/gorilla/mux
+go get gorm.io/gorm
+go get gorm.io/driver/postgres
+
+go get golang.org/x/oauth2@v0.28.0
+go get golang.org/x/oauth2/google
+
+```
+
+run:
+```bash
+docker build -t auth-service .
+docker run -p 8080:8080 --env-file .env auth-service
+```
+
+how to test
+
+1. jwt
+  Login to get a token:
+  method: POST
+  url: http://localhost:8080/login
+  headers: {Content-Type: application/json}
+  body: {
+    "username":"admin",
+    "password":"1234"
+  }
+  Expected success response:{
+  "token": (token)
+}
+  use token:
+  method: GET
+
+url: http://localhost:8080/protected
+
+headers: { Authorization: Bearer (the token you got)}
+Expected result (from terminal): Hello, admin! You accessed a protected route.
+
+
+2. oauth
+on any browser, head to http://localhost:8080/oauth2-login
