@@ -11,6 +11,6 @@ func main() {
     db.ConnectDB()
     r := api.SetupRoutes()
     
-    log.Println("User Service running on :8080")
-    log.Fatal(http.ListenAndServe(":8080", r))
+    log.Println("User Service running on :8081")
+    log.Fatal(http.ListenAndServe(":8081", r))
 }

@@ -10,6 +10,7 @@ func CreateUser(user models.User) error {
     query := `INSERT INTO users (username, email, password) VALUES ($1, $2, $3)`
     _, err := db.DB.Exec(query, user.Username, user.Email, user.Password)
     return err
+
 }
 
 func GetAllUsers() ([]models.User, error) {
@@ -57,3 +58,6 @@ func DeleteUser(id int) error {
     _, err := db.DB.Exec(query, id)
     return err
 }
+
+
+
