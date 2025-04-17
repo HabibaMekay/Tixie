@@ -89,19 +89,15 @@ services:
       build:
         context: ./src/services/payment
         dockerfile: Dockerfile
-      ports:
-        - "8088:8088"
       env_file:
-        - ./.env
+        - .env
       restart: unless-stopped
 
   auth:
     build:
       context: ./src/services/auth
-    ports:
-      - "8080:8080"
     env_file:
-      - ./.env
+      - .env
     restart: unless-stopped
     environment:
       - USER_SERVICE_URL:http://user-service:8080
@@ -131,8 +127,6 @@ services:
     depends_on:
       db-user:  
         condition: service_healthy  
-    ports:
-      - "8081:8081"
     networks:
       - app-network
     
