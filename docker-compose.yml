@@ -85,13 +85,13 @@ services:
       - db-network
       - gateway3-net
 
-  payment:
-      build:
-        context: ./src/services/payment
-        dockerfile: Dockerfile
-      env_file:
-        - .env
-      restart: unless-stopped
+  # payment:
+  #     build:
+  #       context: ./src/services/payment
+  #       dockerfile: Dockerfile
+  #     env_file:
+  #       - .env
+  #     restart: unless-stopped
 
   auth:
     build:
@@ -100,7 +100,7 @@ services:
       - .env
     restart: unless-stopped
     environment:
-      - USER_SERVICE_URL:http://user-service:8080
+      - USER_SERVICE_URL:http://user-service-1:8080
     
   db-user:
     image: postgres:15
@@ -110,8 +110,6 @@ services:
       POSTGRES_DB: userdb
     volumes:
       -  ./src/services/user-service/internal/db/init:/docker-entrypoint-initdb.d
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -120,16 +118,43 @@ services:
     networks:
       - app-network
 
-  user-service:
+  user-service-1:
     build: 
       context: ./src/services/user-service
       dockerfile: Dockerfile
+    container_name: user-service-1
+    env_file:
+      - .env
     depends_on:
       db-user:  
         condition: service_healthy  
     networks:
-      - app-network
-    
+      - gateway1-net
+  
+  user-service-2:
+    build: 
+      context: ./src/services/user-service
+      dockerfile: Dockerfile
+    container_name: user-service-2
+    env_file:
+      - .env
+    depends_on:
+      db-user:  
+        condition: service_healthy  
+    networks:
+      - gateway2-net
+  user-service-3:
+    build: 
+      context: ./src/services/user-service
+      dockerfile: Dockerfile
+    container_name: user-service-3
+    env_file:
+      - .env
+    depends_on:
+      db-user:  
+        condition: service_healthy  
+    networks:
+      - gateway3-net
 
   gateway1:
     build:
@@ -140,6 +165,7 @@ services:
       - REDIS_URL=${REDIS_URL}
       - INSTANCE_NAME=${INSTANCE_NAME_1}
       - TICKET_SERVICE_URL=${TICKET_SERVICE_1}
+      - USER_SERVICE_URL=${USER_SERVICE_1}
     depends_on:
       - redis
       - ticket-service-1
@@ -157,6 +183,7 @@ services:
       - REDIS_URL=${REDIS_URL}
       - INSTANCE_NAME=${INSTANCE_NAME_2}
       - TICKET_SERVICE_URL=${TICKET_SERVICE_2}
+      - USER_SERVICE_URL=${USER_SERVICE_2}
     depends_on:
       - redis
       - ticket-service-2
@@ -174,6 +201,7 @@ services:
       - REDIS_URL=${REDIS_URL}
       - INSTANCE_NAME=${INSTANCE_NAME_3}
       - TICKET_SERVICE_URL=${TICKET_SERVICE_3}
+      - USER_SERVICE_URL=${USER_SERVICE_3}
     depends_on:
       - redis
       - ticket-service-3

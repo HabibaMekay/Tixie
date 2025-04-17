@@ -9,6 +9,7 @@ const verification = require('./jwt/jwt.js');
 
 const instance = process.env.INSTANCE_NAME;
 const targetService = process.env.TICKET_SERVICE_URL;
+const targetUserService = process.env.USER_SERVICE_URL;
 
 const app = express();
 const PORT = process.env.PORT || 8083;
@@ -32,6 +33,17 @@ app.use('/api/v1/tickets', createProxyMiddleware({
   changeOrigin: true,
   pathRewrite: {
     '^/api/v1/tickets': '',
+  },
+  onProxyReq: (proxyReq, req, res) => {
+    console.log(`[PROXY] ${req.method} ${req.originalUrl} → ${targetService}/tickets${req.url}`);
+  },
+}));
+
+app.use('/api/v1/user', createProxyMiddleware({
+  target: targetService,
+  changeOrigin: true,
+  pathRewrite: {
+    '^/api/v1/user': '',
   },
   onProxyReq: (proxyReq, req, res) => {
     console.log(`[PROXY] ${req.method} ${req.originalUrl} → ${targetService}/tickets${req.url}`);
