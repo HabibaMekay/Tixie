@@ -1,21 +1,13 @@
 package api
 
 import (
-	"ticket-service/internal/db/repos"
+	"net/http"
+	"reservation-service/internal/db/repos"
 
 	"github.com/gin-gonic/gin"
 )
 
-// SetupRoutes configures the API routes for ticket-service.
-func SetupRoutes(r *gin.Engine, repo *repos.TicketRepository) {
-	handler := NewHandler(repo)
-
-	// API routes for tickets
-	tickets := r.Group("")
-	{
-		tickets.GET("/:id", handler.GetTicketByID)
-		// tickets.GET("", handler.GetTicketsByEventID)
-		tickets.POST("", handler.CreateTicket)
-		tickets.PUT("/:id/status", handler.UpdateTicketStatus)
-	}
+func SetupRoutes(r *gin.Engine, purchaseRepo *repos.PurchaseRepository, ticketClient *http.Client) {
+	handler := NewReservationHandler(purchaseRepo, ticketClient)
+	r.POST("/reserve", handler.ReserveTicket)
 }

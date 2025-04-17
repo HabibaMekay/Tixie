@@ -13,6 +13,8 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     container_name: ticket-db
+    ports:
+      - "5434:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./src/services/ticket-service/internal/db/init:/docker-entrypoint-initdb.d
@@ -92,6 +94,8 @@ services:
         POSTGRES_PASSWORD: ${DB_PASSWORD_RESERVATION}
         POSTGRES_DB: ${DB_NAME_RESERVATION}
       container_name: reservation-db
+      ports:
+      - "5433:5432"
       volumes:
         - db-data-reservation:/var/lib/postgresql/data
         - ./src/services/reservation-service/internal/db/init:/docker-entrypoint-initdb.d
@@ -114,6 +118,8 @@ services:
         condition: service_healthy
       reservation-db:
         condition: service_healthy
+    ports:
+      - "8081:8081" #WILL BE REMOVED LATER
     environment:
       - DOCKER_COMPOSE=true
       - DB_HOST=${DB_HOST_RESERVATION}
