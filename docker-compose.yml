@@ -1,105 +1,105 @@
 services:
-  # redis:
-  #   image: redis:alpine
-  #   container_name: redis-server
-  #   restart: unless-stopped
-  #   networks:
-  #     - app-network
+  redis:
+    image: redis:alpine
+    container_name: redis-server
+    restart: unless-stopped
+    networks:
+      - app-network
 
-  # db:
-  #   image: postgres:latest
-  #   environment:
-  #     POSTGRES_USER: ${DB_USER}
-  #     POSTGRES_PASSWORD: ${DB_PASSWORD}
-  #     POSTGRES_DB: ${DB_NAME}
-  #   container_name: postgres-db-user
-  #   volumes:
-  #     - db-data:/var/lib/postgresql/data
-  #     - ./src/services/ticket-service/internal/db/init:/docker-entrypoint-initdb.d
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
-  #     interval: 5s
-  #     timeout: 5s
-  #     retries: 5
-  #     start_period: 10s
-  #   networks:
-  #     - db-network
-  # ticket-service-1:
-  #   build:
-  #     context: ./src/services/ticket-service
-  #     dockerfile: Dockerfile
-  #   container_name: ticket-service-1
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #   environment:
-  #     - DOCKER_COMPOSE=true
-  #     - DB_HOST=${DB_HOST}
-  #     - DB_PORT=${DB_PORT}
-  #     - DB_USER=${DB_USER}
-  #     - DB_PASSWORD=${DB_PASSWORD}
-  #     - DB_NAME=${DB_NAME}
-  #     - DB_SSLMODE=${DB_SSLMODE}
-  #   networks:
-  #     - db-network
-  #     - gateway1-net 
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    container_name: postgres-db-user
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./src/services/ticket-service/internal/db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - db-network
+  ticket-service-1:
+    build:
+      context: ./src/services/ticket-service
+      dockerfile: Dockerfile
+    container_name: ticket-service-1
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DOCKER_COMPOSE=true
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_SSLMODE=${DB_SSLMODE}
+    networks:
+      - db-network
+      - gateway1-net 
   
 
-  # ticket-service-2:
-  #   build:
-  #     context: ./src/services/ticket-service
-  #     dockerfile: Dockerfile
-  #   container_name: ticket-service-2
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #   environment:
-  #     - DOCKER_COMPOSE=true
-  #     - DB_HOST=${DB_HOST}
-  #     - DB_PORT=${DB_PORT}
-  #     - DB_USER=${DB_USER}
-  #     - DB_PASSWORD=${DB_PASSWORD}
-  #     - DB_NAME=${DB_NAME}
-  #     - DB_SSLMODE=${DB_SSLMODE}
-  #   networks:
-  #     - db-network
-  #     - gateway2-net
+  ticket-service-2:
+    build:
+      context: ./src/services/ticket-service
+      dockerfile: Dockerfile
+    container_name: ticket-service-2
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DOCKER_COMPOSE=true
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_SSLMODE=${DB_SSLMODE}
+    networks:
+      - db-network
+      - gateway2-net
 
-  # ticket-service-3:
-  #   build:
-  #     context: ./src/services/ticket-service
-  #     dockerfile: Dockerfile
-  #   container_name: ticket-service-3
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #   environment:
-  #     - DOCKER_COMPOSE=true
-  #     - DB_HOST=${DB_HOST}
-  #     - DB_PORT=${DB_PORT}
-  #     - DB_USER=${DB_USER}
-  #     - DB_PASSWORD=${DB_PASSWORD}
-  #     - DB_NAME=${DB_NAME}
-  #     - DB_SSLMODE=${DB_SSLMODE}
-  #   networks:
-  #     - db-network
-  #     - gateway3-net
+  ticket-service-3:
+    build:
+      context: ./src/services/ticket-service
+      dockerfile: Dockerfile
+    container_name: ticket-service-3
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DOCKER_COMPOSE=true
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_SSLMODE=${DB_SSLMODE}
+    networks:
+      - db-network
+      - gateway3-net
 
-  # payment:
-  #     build:
-  #       context: ./src/services/payment
-  #       dockerfile: Dockerfile
-  #     ports:
-  #       - "8088:8088"
-  #     env_file:
-  #       - ./.env
-  #     restart: unless-stopped
+  payment:
+      build:
+        context: ./src/services/payment
+        dockerfile: Dockerfile
+      ports:
+        - "8078:8078"
+      env_file:
+        - ./.env
+      restart: unless-stopped
 
   auth:
     build:
       context: ./src/services/auth
     ports:
-      - "8080:8080"
+      - "8070:8070"
     env_file:
       - ./.env
     restart: unless-stopped
@@ -115,7 +115,7 @@ services:
     volumes:
       -  ./src/services/user-service/internal/db/init:/docker-entrypoint-initdb.d
     ports:
-      - "5432:5432"
+      - "5433:5433"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -132,89 +132,87 @@ services:
       db-user:  
         condition: service_healthy  
     ports:
-      - "8081:8081"
+      - "8071:8071"
     networks:
       - app-network
     
+
+
+  gateway1:
+    build:
+      context: .
+      dockerfile: src/gateway/Dockerfile
+    container_name: express-gateway-1
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - INSTANCE_NAME=${INSTANCE_NAME_1}
+      - TICKET_SERVICE_URL=${TICKET_SERVICE_1}
+    depends_on:
+      - redis
+      - ticket-service-1
+    restart: unless-stopped
+    networks:
+      - app-network
+      - gateway1-net 
+
+  gateway2:
+    build:
+      context: .
+      dockerfile: src/gateway/Dockerfile
+    container_name: express-gateway-2
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - INSTANCE_NAME=${INSTANCE_NAME_2}
+      - TICKET_SERVICE_URL=${TICKET_SERVICE_2}
+    depends_on:
+      - redis
+      - ticket-service-2
+    restart: unless-stopped
+    networks:
+      - app-network
+      - gateway2-net
+
+  gateway3:
+    build:
+      context: .
+      dockerfile: src/gateway/Dockerfile
+    container_name: express-gateway-3
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - INSTANCE_NAME=${INSTANCE_NAME_3}
+      - TICKET_SERVICE_URL=${TICKET_SERVICE_3}
+    depends_on:
+      - redis
+      - ticket-service-3
+    restart: unless-stopped
+    networks:
+      - app-network
+      - gateway3-net
+
+  haproxy:
+    build:
+      context: src/haproxy
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - gateway1
+      - gateway2
+      - gateway3
+    networks:
+      - app-network
+
+volumes:
+  db-data:
 networks:
   app-network:
-     driver: bridge
-
-#   gateway1:
-#     build:
-#       context: .
-#       dockerfile: src/gateway/Dockerfile
-#     container_name: express-gateway-1
-#     environment:
-#       - REDIS_URL=${REDIS_URL}
-#       - INSTANCE_NAME=${INSTANCE_NAME_1}
-#       - TICKET_SERVICE_URL=${TICKET_SERVICE_1}
-#     depends_on:
-#       - redis
-#       - ticket-service-1
-#     restart: unless-stopped
-#     networks:
-#       - app-network
-#       - gateway1-net 
-
-#   gateway2:
-#     build:
-#       context: .
-#       dockerfile: src/gateway/Dockerfile
-#     container_name: express-gateway-2
-#     environment:
-#       - REDIS_URL=${REDIS_URL}
-#       - INSTANCE_NAME=${INSTANCE_NAME_2}
-#       - TICKET_SERVICE_URL=${TICKET_SERVICE_2}
-#     depends_on:
-#       - redis
-#       - ticket-service-2
-#     restart: unless-stopped
-#     networks:
-#       - app-network
-#       - gateway2-net
-
-#   gateway3:
-#     build:
-#       context: .
-#       dockerfile: src/gateway/Dockerfile
-#     container_name: express-gateway-3
-#     environment:
-#       - REDIS_URL=${REDIS_URL}
-#       - INSTANCE_NAME=${INSTANCE_NAME_3}
-#       - TICKET_SERVICE_URL=${TICKET_SERVICE_3}
-#     depends_on:
-#       - redis
-#       - ticket-service-3
-#     restart: unless-stopped
-#     networks:
-#       - app-network
-#       - gateway3-net
-
-#   haproxy:
-#     build:
-#       context: src/haproxy
-#       dockerfile: Dockerfile
-#     ports:
-#       - "80:80"
-#     depends_on:
-#       - gateway1
-#       - gateway2
-#       - gateway3
-#     networks:
-#       - app-network
-
-# volumes:
-#   db-data:
-# networks:
-#   app-network:
-#     driver: bridge
-#   db-network:
-#     driver: bridge
-#   gateway1-net:
-#     driver: bridge
-#   gateway2-net:
-#     driver: bridge
-#   gateway3-net:
-#     driver: bridge
+    driver: bridge
+  db-network:
+    driver: bridge
+  gateway1-net:
+    driver: bridge
+  gateway2-net:
+    driver: bridge
+  gateway3-net:
+    driver: bridge
 
