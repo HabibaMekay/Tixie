@@ -3,7 +3,8 @@ const WINDOW_SIZE = 60000;
 const MAX_REQUESTS = 5;
 
 const slidingWindowRateLimiter = async (req, res, next) => {
-  const key = `sw:${req.ip}`;
+  const userKey = req.user?.username ;
+  const key = `rate_limiter:${userKey}`;
   const now = Date.now();
   const windowStart = now - WINDOW_SIZE;
 

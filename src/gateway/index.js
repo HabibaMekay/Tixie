@@ -5,6 +5,7 @@ const redis = require('./redis/r_client.js');
 const rateLimiter = require('./limiters/rate_limiter.js');
 const concurrencyLimiter = require('./limiters/concurrency_limiter.js');
 const throttlingLimiter = require('./limiters/throttling_limiter.js');
+const verification = require('./jwt/jwt.js');
 
 const instance = process.env.INSTANCE_NAME;
 const targetService = process.env.TICKET_SERVICE_URL;
@@ -20,6 +21,7 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use('/api', verification);
 app.use('/api', concurrencyLimiter);
 app.use('/api', throttlingLimiter);
 app.use('/api', rateLimiter);
