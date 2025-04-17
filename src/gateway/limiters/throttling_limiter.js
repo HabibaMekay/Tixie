@@ -4,8 +4,8 @@ const WINDOW_MS = 10 * 1000; // 10 seconds window
 const MIN_INTERVAL = 1000;   // Min 2 seconds between requests per IP
 
 const throttlingMiddleware = async (req, res, next) => {
-  const ip = req.ip;
-  const key = `throttle:${ip}`;
+  const userKey = req.user?.username ;
+  const key = `Throttled:${userKey}`;
   const now = Date.now();
 
   try {

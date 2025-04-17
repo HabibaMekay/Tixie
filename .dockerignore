@@ -2,3 +2,10 @@ node_modules
 npm-debug.log
 Dockerfile
 .dockerignore
+*.log
+*.md
+*.DS_Store
+vendor/
+*.tmp
+node_modules/
+.git

@@ -16,9 +16,9 @@ import (
 )
 
 type UserDTO struct {
-    Username string `json:"username"`
-    Email    string `json:"email"`
-    Password string `json:"password"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 func createUserInUserService(user UserDTO) error {
@@ -39,7 +39,6 @@ func createUserInUserService(user UserDTO) error {
 	return nil
 }
 
-
 func authenticateUser(creds Credentials) (bool, error) {
 	data, err := json.Marshal(creds)
 	if err != nil {
@@ -58,8 +57,7 @@ func authenticateUser(creds Credentials) (bool, error) {
 	return false, nil
 }
 
-
-var jwtKey = []byte("secret_key")
+var jwtKey []byte
 var oauth2Config *oauth2.Config // Declare it globally
 
 type Credentials struct {
@@ -77,6 +75,13 @@ func init() {
 	if err != nil {
 		fmt.Println("Error loading .env file")
 	}
+	// assigning secret key to jwtKey
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		fmt.Println("JWT_SECRET is not set in the environment")
+		os.Exit(1)
+	}
+	jwtKey = []byte(jwtSecret)
 
 	// Initialize the OAuth2 config AFTER loading env variables
 	oauth2Config = &oauth2.Config{
@@ -132,10 +137,8 @@ func login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
-
 func oauth2Login(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("==> /oauth2-login handler called") // ADD THIS LINE
+	fmt.Println("==> /oauth2-login handler called")
 	url := oauth2Config.AuthCodeURL("", oauth2.AccessTypeOffline)
 	fmt.Println("OAuth2 URL:", url)
 	http.Redirect(w, r, url, http.StatusFound)
@@ -171,12 +174,11 @@ func oauth2Callback(w http.ResponseWriter, r *http.Request) {
 	email := fmt.Sprintf("%v", userInfo["email"])
 	name := fmt.Sprintf("%v", userInfo["name"])
 
-	
 	userDTO := UserDTO{
-        Username: name,
-        Email:    email,
-        Password: "oauth2_default", // This should probably be handled differently, maybe leave blank if no password.
-    }
+		Username: name,
+		Email:    email,
+		Password: "oauth2_default", // This should probably be handled differently, maybe leave blank if no password.
+	}
 	err = createUserInUserService(userDTO)
 	if err != nil {
 		http.Error(w, "Failed to create user in user-service", http.StatusInternalServerError)
@@ -186,7 +188,6 @@ func oauth2Callback(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(userInfo)
 }
-
 
 func protected(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
@@ -210,8 +211,6 @@ func protected(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Hello, %s! You accessed a protected route.\n", claims.Username)
 }
 
-
-
 func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/login", login).Methods("POST")
@@ -222,4 +221,3 @@ func main() {
 	fmt.Println("Server is running on http://localhost:8080")
 	http.ListenAndServe(":8080", r)
 }
-
