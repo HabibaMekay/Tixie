@@ -31,6 +31,8 @@ services:
       context: ./src/services/ticket-service
       dockerfile: Dockerfile
     container_name: ticket-service-1
+    ports:
+      - "9082:8082"
     depends_on:
       ticket-db:
         condition: service_healthy
@@ -119,7 +121,7 @@ services:
       reservation-db:
         condition: service_healthy
     ports:
-      - "8081:8081" #WILL BE REMOVED LATER
+      - "9081:8081" #WILL BE REMOVED LATER
     environment:
       - DOCKER_COMPOSE=true
       - DB_HOST=${DB_HOST_RESERVATION}
@@ -132,23 +134,23 @@ services:
       - db-network
       - gateway1-net 
 
-  payment:
-      build:
-        context: ./services/payment
-      ports:
-        - "8088:8088"
-      env_file:
-        - ./.env
-      restart: unless-stopped
+  # payment:
+  #     build:
+  #       context: ./services/payment
+  #     ports:
+  #       - "8088:8088"
+  #     env_file:
+  #       - ./.env
+  #     restart: unless-stopped
 
-  auth:
-    build:
-      context: ./services/auth
-    ports:
-      - "8080:8080"
-    env_file:
-      - ./.env
-    restart: unless-stopped
+  # auth:
+  #   build:
+  #     context: ./services/auth
+  #   ports:
+  #     - "8080:8080"
+  #   env_file:
+  #     - ./.env
+  #   restart: unless-stopped
 
   gateway1:
     build:
@@ -206,7 +208,7 @@ services:
       context: src/haproxy
       dockerfile: Dockerfile
     ports:
-      - "80:80"
+      - "90:80"
     depends_on:
       - gateway1
       - gateway2

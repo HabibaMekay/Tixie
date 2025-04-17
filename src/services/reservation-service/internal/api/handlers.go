@@ -5,23 +5,68 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"reservation-service/internal/db/models"
 	"reservation-service/internal/db/repos"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
 type ReservationHandler struct {
-	purchaseRepo *repos.PurchaseRepository
-	ticketClient *http.Client
+	purchaseRepo  *repos.PurchaseRepository
+	ticketClient  *http.Client
+	ticketBaseURL string
 }
 
 func NewReservationHandler(purchaseRepo *repos.PurchaseRepository, ticketClient *http.Client) *ReservationHandler {
-	return &ReservationHandler{
-		purchaseRepo: purchaseRepo,
-		ticketClient: ticketClient,
+	ticketBaseURL := os.Getenv("RouteToTicket")
+	if ticketBaseURL == "" {
+		ticketBaseURL = "http://ticket-service:8080" // Fallback
 	}
+	return &ReservationHandler{
+		purchaseRepo:  purchaseRepo,
+		ticketClient:  ticketClient,
+		ticketBaseURL: ticketBaseURL,
+	}
+}
+func (h *ReservationHandler) GetTicket(c *gin.Context) {
+	// Extract ticket ID from URL parameter
+	ticketIDStr := c.Param("id")
+	ticketID, err := strconv.Atoi(ticketIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket ID"})
+		return
+	}
+
+	// Fetch ticket from ticket-service
+	var ticket struct {
+		ID      int     `json:"id"`
+		EventID int     `json:"event_id"`
+		Price   float64 `json:"price"`
+		Status  string  `json:"status"`
+	}
+	ticketURL := fmt.Sprintf("%s/tickets/%d", h.ticketBaseURL, ticketID)
+	ticketResp, err := h.ticketClient.Get(ticketURL)
+	if err != nil || ticketResp.StatusCode != http.StatusOK {
+		status := http.StatusInternalServerError
+		if ticketResp != nil {
+			status = ticketResp.StatusCode
+		}
+		c.JSON(status, gin.H{"error": "Failed to fetch ticket"})
+		return
+	}
+	defer ticketResp.Body.Close()
+
+	// Decode the ticket response
+	if err := json.NewDecoder(ticketResp.Body).Decode(&ticket); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode ticket"})
+		return
+	}
+
+	// Return the ticket
+	c.JSON(http.StatusOK, ticket)
 }
 
 func (h *ReservationHandler) ReserveTicket(c *gin.Context) {
@@ -41,7 +86,8 @@ func (h *ReservationHandler) ReserveTicket(c *gin.Context) {
 		Price   float64 `json:"price"`
 		Status  string  `json:"status"`
 	}
-	ticketResp, err := h.ticketClient.Get("http://ticket-service:8080/tickets/" + fmt.Sprint(req.TicketID))
+	ticketURL := fmt.Sprintf("%s/tickets/%d", h.ticketBaseURL, req.TicketID)
+	ticketResp, err := h.ticketClient.Get(ticketURL)
 	if err != nil || ticketResp.StatusCode != http.StatusOK {
 		status := http.StatusInternalServerError
 		if ticketResp != nil {
@@ -61,7 +107,8 @@ func (h *ReservationHandler) ReserveTicket(c *gin.Context) {
 	}
 
 	// Step 2: Verify user exists via ticket-service
-	userResp, err := h.ticketClient.Get("http://ticket-service:8080/users/" + fmt.Sprint(req.UserID) + "/exists")
+	userURL := fmt.Sprintf("%s/users/%d/exists", h.ticketBaseURL, req.UserID)
+	userResp, err := h.ticketClient.Get(userURL)
 	if err != nil || userResp.StatusCode != http.StatusOK {
 		status := http.StatusInternalServerError
 		if userResp != nil {
@@ -84,7 +131,8 @@ func (h *ReservationHandler) ReserveTicket(c *gin.Context) {
 	}
 
 	// Step 3: Verify event exists via ticket-service
-	eventResp, err := h.ticketClient.Get("http://ticket-service:8080/events/" + fmt.Sprint(ticket.EventID) + "/exists")
+	eventURL := fmt.Sprintf("%s/events/%d/exists", h.ticketBaseURL, ticket.EventID)
+	eventResp, err := h.ticketClient.Get(eventURL)
 	if err != nil || eventResp.StatusCode != http.StatusOK {
 		status := http.StatusInternalServerError
 		if eventResp != nil {
@@ -130,7 +178,7 @@ func (h *ReservationHandler) ReserveTicket(c *gin.Context) {
 	// Step 6: Update ticket status via ticket-service using PATCH
 	updateReq := map[string]string{"status": "reserved"}
 	updateBody, _ := json.Marshal(updateReq)
-	updateURL := "http://ticket-service:8080/tickets/" + fmt.Sprint(req.TicketID) + "/status"
+	updateURL := fmt.Sprintf("%s/tickets/%d/status", h.ticketBaseURL, req.TicketID)
 	updateRequest, err := http.NewRequest(http.MethodPatch, updateURL, bytes.NewBuffer(updateBody))
 	if err != nil {
 		h.purchaseRepo.UpdatePurchaseStatus(createdPurchase.ID, "cancelled")
