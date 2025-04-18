@@ -151,12 +151,12 @@ services:
   #   env_file:
   #     - ./.env
   #   restart: unless-stopped
-      context: ./src/services/auth
-    env_file:
-      - .env
-    restart: unless-stopped
-    environment:
-      - USER_SERVICE_URL:http://user-service-1:8080
+    #   context: ./src/services/auth
+    # env_file:
+    #   - .env
+    # restart: unless-stopped
+    # environment:
+    #   - USER_SERVICE_URL:http://user-service-1:8080
     
   db-user:
     image: postgres:15
