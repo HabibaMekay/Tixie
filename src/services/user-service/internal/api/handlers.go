@@ -20,7 +20,7 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 
     err = repos.CreateUser(user)
     if err != nil {
-        // if not unique, tries to insert and catches error if it fails avoid race condition
+        // if not unique, tries to insert and catches error if it fails (avoid race condition)
         if pgErr, ok := err.(*pq.Error); ok {
             if pgErr.Code == "23505" { // unique violation 
                 http.Error(w, "Username or Email already exists", http.StatusConflict)
@@ -82,6 +82,14 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 
     err = repos.UpdateUser(id, updatedUser)
     if err != nil {
+        // if not unique
+        if pgErr, ok := err.(*pq.Error); ok {
+            if pgErr.Code == "23505" { // unique violation
+                http.Error(w, "Username or Email already exists", http.StatusConflict)
+                return
+            }
+        }
+    
         http.Error(w, "Failed to update user", http.StatusInternalServerError)
         return
     }
