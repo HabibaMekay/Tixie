@@ -40,13 +40,13 @@ app.use('/api/v1/tickets', createProxyMiddleware({
 }));
 
 app.use('/api/v1/user', createProxyMiddleware({
-  target: targetService,
+  target: targetUserService,
   changeOrigin: true,
   pathRewrite: {
     '^/api/v1/user': '',
   },
   onProxyReq: (proxyReq, req, res) => {
-    console.log(`[PROXY] ${req.method} ${req.originalUrl} → ${targetService}/tickets${req.url}`);
+    console.log(`[PROXY] ${req.method} ${req.originalUrl} → ${targetUserService}/user${req.url}`);
   },
 }));
 
