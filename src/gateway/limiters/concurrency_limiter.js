@@ -5,7 +5,8 @@ const MAX_CONCURRENT = 3;
 const EXPIRATION = 15000; // also for testiing purposes
 
 const concurrencyLimiter= async (req, res, next) => {
-  const key = `concurrency:${req.ip}`;
+  const userKey = req.user?.username ;
+  const key = `concurrency:${userKey}`;
 
   try {
     const active = await redis.incr(key);

@@ -151,6 +151,95 @@ services:
   #   env_file:
   #     - ./.env
   #   restart: unless-stopped
+      context: ./src/services/auth
+    env_file:
+      - .env
+    restart: unless-stopped
+    environment:
+      - USER_SERVICE_URL:http://user-service-1:8080
+    
+  db-user:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: userdb
+    volumes:
+      -  ./src/services/user-service/internal/db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  user-service-1:
+    build: 
+      context: ./src/services/user-service
+      dockerfile: Dockerfile
+    container_name: user-service-1
+    env_file:
+      - .env
+    depends_on:
+      db-user:  
+        condition: service_healthy  
+    networks:
+      - gateway1-net
+  
+  user-service-2:
+    build: 
+      context: ./src/services/user-service
+      dockerfile: Dockerfile
+    container_name: user-service-2
+    env_file:
+      - .env
+    depends_on:
+      db-user:  
+        condition: service_healthy  
+    networks:
+      - gateway2-net
+  user-service-3:
+    build: 
+      context: ./src/services/user-service
+      dockerfile: Dockerfile
+    container_name: user-service-3
+    env_file:
+      - .env
+    depends_on:
+      db-user:  
+        condition: service_healthy  
+    networks:
+      - gateway3-net
+  event-db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: eventdb
+    volumes:
+      - ./src/services/event-service/internal/db/init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  event-service:
+    build: 
+      context: ./src/services/event-service
+      dockerfile: Dockerfile
+    depends_on:
+      event-db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    networks:
+      - app-network
 
   gateway1:
     build:
@@ -161,6 +250,7 @@ services:
       - REDIS_URL=${REDIS_URL}
       - INSTANCE_NAME=${INSTANCE_NAME_1}
       - TICKET_SERVICE_URL=${TICKET_SERVICE_1}
+      - USER_SERVICE_URL=${USER_SERVICE_1}
     depends_on:
       - redis
       - ticket-service-1
@@ -178,6 +268,7 @@ services:
       - REDIS_URL=${REDIS_URL}
       - INSTANCE_NAME=${INSTANCE_NAME_2}
       - TICKET_SERVICE_URL=${TICKET_SERVICE_2}
+      - USER_SERVICE_URL=${USER_SERVICE_2}
     depends_on:
       - redis
       - ticket-service-2
@@ -195,6 +286,7 @@ services:
       - REDIS_URL=${REDIS_URL}
       - INSTANCE_NAME=${INSTANCE_NAME_3}
       - TICKET_SERVICE_URL=${TICKET_SERVICE_3}
+      - USER_SERVICE_URL=${USER_SERVICE_3}
     depends_on:
       - redis
       - ticket-service-3
@@ -230,3 +322,4 @@ networks:
     driver: bridge
   gateway3-net:
     driver: bridge
+

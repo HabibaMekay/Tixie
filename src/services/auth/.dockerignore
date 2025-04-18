@@ -1,5 +1,0 @@
-*.log
-*.tmp
-vendor/
-node_modules/
-.git
