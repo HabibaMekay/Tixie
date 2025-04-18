@@ -4,6 +4,8 @@ import (
     "database/sql"
     "user-service/internal/db"
     "user-service/internal/db/models"
+    "errors"
+    "golang.org/x/crypto/bcrypt"
 )
 
 func CreateUser(user models.User) error {
@@ -60,4 +62,23 @@ func DeleteUser(id int) error {
 }
 
 
+func CheckCredentials(username, password string) (bool, error) {
+    var storedPassword string
 
+    query := `SELECT password FROM users WHERE username = $1`
+    err := db.DB.QueryRow(query, username).Scan(&storedPassword)
+    if err != nil {
+        if errors.Is(err, sql.ErrNoRows) {
+            return false, nil // No user found
+        }
+        return false, err // Database error
+    }
+
+    // Compare passwords
+    err = bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(password))
+    if err != nil {
+        return false, nil //  don't match
+    }
+
+    return true, nil //  match
+}

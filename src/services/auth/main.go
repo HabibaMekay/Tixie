@@ -45,7 +45,7 @@ func authenticateUser(creds Credentials) (bool, error) {
 		return false, err
 	}
 
-	resp, err := http.Post("http://user-service:8081/authenticate", "application/json", bytes.NewBuffer(data))
+	resp, err := http.Post("http://user-service:8081/users/authenticate", "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return false, err
 	}

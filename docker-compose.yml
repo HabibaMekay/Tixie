@@ -143,20 +143,17 @@ services:
   #       - ./.env
   #     restart: unless-stopped
 
-  # auth:
-  #   build:
-  #     context: ./services/auth
-  #   ports:
-  #     - "8080:8080"
-  #   env_file:
-  #     - ./.env
-  #   restart: unless-stopped
-    #   context: ./src/services/auth
-    # env_file:
-    #   - .env
-    # restart: unless-stopped
-    # environment:
-    #   - USER_SERVICE_URL:http://user-service-1:8080
+  auth:
+    build:
+      context: ./src/services/auth
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./.env
+    restart: unless-stopped
+    environment:
+      - USER_SERVICE_URL=http://user-service-1:8080
+
     
   db-user:
     image: postgres:15
