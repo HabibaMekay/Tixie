@@ -155,6 +155,35 @@ services:
         condition: service_healthy  
     networks:
       - gateway3-net
+  event-db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: eventdb
+    volumes:
+      - ./src/services/event-service/internal/db/init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  event-service:
+    build: 
+      context: ./src/services/event-service
+      dockerfile: Dockerfile
+    depends_on:
+      event-db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    networks:
+      - app-network
 
   gateway1:
     build:
