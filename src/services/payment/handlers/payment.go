@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/stripe/stripe-go"
 	"github.com/stripe/stripe-go/paymentintent"
 )
@@ -23,10 +24,13 @@ func CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	idempotencyKey := uuid.New().String()
+
 	params := &stripe.PaymentIntentParams{
 		Amount:   stripe.Int64(req.Amount),
 		Currency: stripe.String(string(stripe.CurrencyUSD)),
 	}
+	params.SetIdempotencyKey(idempotencyKey)
 
 	pi, err := paymentintent.New(params)
 	if err != nil {
@@ -36,6 +40,7 @@ func CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"client_secret": pi.ClientSecret,
+		"client_secret":   pi.ClientSecret,
+		"idempotency_key": idempotencyKey,
 	})
 }
