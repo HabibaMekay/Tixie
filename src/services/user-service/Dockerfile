@@ -10,6 +10,6 @@ COPY . .
 
 RUN go build -o user-service ./cmd/main.go
 
-EXPOSE 8080
+EXPOSE 8081
 
 CMD ["./user-service"]

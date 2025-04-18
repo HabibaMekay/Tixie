@@ -6,12 +6,12 @@ import (
 
 func SetupRoutes() *mux.Router {
 	r := mux.NewRouter()
-	r.HandleFunc("/users", CreateUser).Methods("POST")
-	r.HandleFunc("/users", GetUsers).Methods("GET")
-	r.HandleFunc("/users/{id}", GetUserByID).Methods("GET")
-	r.HandleFunc("/users/{id}", UpdateUser).Methods("PUT")
-	r.HandleFunc("/users/{id}", DeleteUser).Methods("DELETE")
-    r.HandleFunc("/users/authenticate", AuthenticateUser).Methods("POST")
+	r.HandleFunc("/", CreateUser).Methods("POST")
+	r.HandleFunc("/", GetUsers).Methods("GET")
+	r.HandleFunc("/{id}", GetUserByID).Methods("GET")
+	r.HandleFunc("/{id}", UpdateUser).Methods("PUT")
+	r.HandleFunc("/{id}", DeleteUser).Methods("DELETE")
+	r.HandleFunc("/authenticate", AuthenticateUser).Methods("POST")
 
 	return r
 }

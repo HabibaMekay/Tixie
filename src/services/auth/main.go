@@ -10,7 +10,6 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
-	"github.com/joho/godotenv"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -27,7 +26,7 @@ func createUserInUserService(user UserDTO) error {
 		return err
 	}
 
-	resp, err := http.Post("http://user-service:8081/users", "application/json", bytes.NewBuffer(data))
+	resp, err := http.Post(fmt.Sprintf("%s", userServiceURL), "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return err
 	}
@@ -45,7 +44,7 @@ func authenticateUser(creds Credentials) (bool, error) {
 		return false, err
 	}
 
-	resp, err := http.Post("http://user-service:8081/users/authenticate", "application/json", bytes.NewBuffer(data))
+	resp, err := http.Post(fmt.Sprintf("%s/authenticate", userServiceURL), "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return false, err
 	}
@@ -59,6 +58,7 @@ func authenticateUser(creds Credentials) (bool, error) {
 
 var jwtKey []byte
 var oauth2Config *oauth2.Config // Declare it globally
+var userServiceURL string
 
 type Credentials struct {
 	Username string `json:"username"`
@@ -71,12 +71,9 @@ type Claims struct {
 }
 
 func init() {
-	err := godotenv.Load()
-	if err != nil {
-		fmt.Println("Error loading .env file")
-	}
 	// assigning secret key to jwtKey
 	jwtSecret := os.Getenv("JWT_SECRET")
+	userServiceURL = os.Getenv("USER_SERVICE_URL")
 	if jwtSecret == "" {
 		fmt.Println("JWT_SECRET is not set in the environment")
 		os.Exit(1)
@@ -87,7 +84,6 @@ func init() {
 	oauth2Config = &oauth2.Config{
 		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		RedirectURL:  "http://localhost:8080/callback",
 		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.profile"},
 		Endpoint:     google.Endpoint,
 	}
@@ -141,7 +137,6 @@ func oauth2Login(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("==> /oauth2-login handler called")
 	url := oauth2Config.AuthCodeURL("", oauth2.AccessTypeOffline)
 	fmt.Println("OAuth2 URL:", url)
-	http.Redirect(w, r, url, http.StatusFound)
 }
 
 func oauth2Callback(w http.ResponseWriter, r *http.Request) {
