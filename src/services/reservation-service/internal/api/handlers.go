@@ -18,15 +18,19 @@ type ReservationHandler struct {
 	purchaseRepo  *repos.PurchaseRepository
 	ticketClient  *http.Client
 	ticketBaseURL string
+	userBaseURL   string
 }
 
 func NewReservationHandler(purchaseRepo *repos.PurchaseRepository, ticketClient *http.Client) *ReservationHandler {
-	ticketBaseURL := "http://ticket-service-1:8082" //"http://gateway1:8083/api/v1/tickets"
-	fmt.Printf("Initialized ReservationHandler with ticketBaseURL: %s\n", ticketBaseURL)
+	ticketBaseURL := "http://ticket-service-1:8082" // Bypassing gateway
+	userBaseURL := "http://user-service-1:8080"
+	fmt.Printf("Initialized ReservationHandler with ticketBaseURL: %s, userBaseURL: %s\n",
+		ticketBaseURL, userBaseURL)
 	return &ReservationHandler{
 		purchaseRepo:  purchaseRepo,
 		ticketClient:  ticketClient,
 		ticketBaseURL: ticketBaseURL,
+		userBaseURL:   userBaseURL,
 	}
 }
 
@@ -116,6 +120,67 @@ func (h *ReservationHandler) ReserveTicket(c *gin.Context) {
 		return
 	}
 
+	// Step 2: Validate user_id with user-service
+	userURL := fmt.Sprintf("%s/%d", h.userBaseURL, req.UserID)
+	fmt.Printf("Validating user from URL: %s\n", userURL)
+	userResp, err := h.ticketClient.Get(userURL)
+	if err != nil || userResp.StatusCode != http.StatusOK {
+		status := http.StatusBadRequest
+		if userResp != nil {
+			status = userResp.StatusCode
+		}
+		fmt.Printf("Failed to validate user: URL=%s, err=%v, status=%d\n", userURL, err, status)
+		c.JSON(status, gin.H{"error": "Invalid user ID"})
+		return
+	}
+	defer userResp.Body.Close()
+	// Decode user response to verify structure
+	var user struct {
+		ID int `json:"id"`
+	}
+	if err := json.NewDecoder(userResp.Body).Decode(&user); err != nil {
+		fmt.Printf("Failed to decode user response: err=%v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode user response"})
+		return
+	}
+	if user.ID != req.UserID {
+		fmt.Printf("User ID mismatch: expected=%d, got=%d\n", req.UserID, user.ID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+	fmt.Printf("User validated: user_id=%d\n", user.ID)
+
+	// Step 3: Validate event_id with event-service (commented out as not integrated)
+	/*
+		eventURL := fmt.Sprintf("http://event-service-1:8080/%d", ticket.EventID)
+		fmt.Printf("Validating event from URL: %s\n", eventURL)
+		eventResp, err := h.ticketClient.Get(eventURL)
+		if err != nil || eventResp.StatusCode != http.StatusOK {
+			status := http.StatusBadRequest
+			if eventResp != nil {
+				status = eventResp.StatusCode
+			}
+			fmt.Printf("Failed to validate event: URL=%s, err=%v, status=%d\n", eventURL, err, status)
+			c.JSON(status, gin.H{"error": "Invalid event ID"})
+			return
+		}
+		defer eventResp.Body.Close()
+		var event struct {
+			ID int `json:"id"`
+		}
+		if err := json.NewDecoder(eventResp.Body).Decode(&event); err != nil {
+			fmt.Printf("Failed to decode event response: err=%v\n", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode event response"})
+			return
+		}
+		if event.ID != ticket.EventID {
+			fmt.Printf("Event ID mismatch: expected=%d, got=%d\n", ticket.EventID, event.ID)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
+			return
+		}
+		fmt.Printf("Event validated: event_id=%d\n", event.ID)
+	*/
+
 	// Step 4: Process payment (placeholder)
 	paymentSuccess := h.processPayment(req.UserID, ticket.Price)
 	if !paymentSuccess {
@@ -143,7 +208,7 @@ func (h *ReservationHandler) ReserveTicket(c *gin.Context) {
 	fmt.Printf("Created purchase: %+v\n", createdPurchase)
 
 	// Step 6: Update ticket status via ticket-service using PUT
-	updateReq := map[string]string{"status": "sold"} // Changed from "reserved" to "sold"
+	updateReq := map[string]string{"status": "sold"}
 	updateBody, _ := json.Marshal(updateReq)
 	updateURL := fmt.Sprintf("%s/%d/status", h.ticketBaseURL, req.TicketID)
 	fmt.Printf("Sending PUT request to: %s with body: %s\n", updateURL, string(updateBody))
