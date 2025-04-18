@@ -172,8 +172,8 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - app-network
-
+      - db-network
+      
   user-service-1:
     build: 
       context: ./src/services/user-service
@@ -185,6 +185,7 @@ services:
       db-user:  
         condition: service_healthy  
     networks:
+      - db-network
       - gateway1-net
   
   user-service-2:
@@ -198,6 +199,7 @@ services:
       db-user:  
         condition: service_healthy  
     networks:
+      - db-network
       - gateway2-net
   user-service-3:
     build: 
@@ -210,6 +212,7 @@ services:
       db-user:  
         condition: service_healthy  
     networks:
+      - db-network
       - gateway3-net
   event-db:
     image: postgres:15
