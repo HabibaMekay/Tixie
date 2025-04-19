@@ -1,17 +1,21 @@
 package api
 
 import (
-	"github.com/gorilla/mux"
+	"user-service/internal/db/repos"
+
+	"github.com/gin-gonic/gin"
 )
 
-func SetupRoutes() *mux.Router {
-	r := mux.NewRouter()
-	r.HandleFunc("/", CreateUser).Methods("POST")
-	r.HandleFunc("/", GetUsers).Methods("GET")
-	r.HandleFunc("/{id}", GetUserByID).Methods("GET")
-	r.HandleFunc("/{id}", UpdateUser).Methods("PUT")
-	r.HandleFunc("/{id}", DeleteUser).Methods("DELETE")
-	r.HandleFunc("/authenticate", AuthenticateUser).Methods("POST")
+func SetupRoutes(r *gin.Engine, repo *repos.UserRepository) {
+	handler := NewHandler(repo)
 
-	return r
+	users := r.Group("")
+	{
+		users.POST("", handler.CreateUser)
+		users.GET("", handler.GetUsers)
+		users.GET("/:id", handler.GetUserByID)
+		users.PUT("/:id", handler.UpdateUser)
+		users.DELETE("/:id", handler.DeleteUser)
+		users.POST("/authenticate", handler.AuthenticateUser)
+	}
 }

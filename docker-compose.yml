@@ -162,6 +162,8 @@ services:
       - USER_SERVICE_URL=${USER_SERVICE_1}
       - JWT_SECRET=${JWT_SECRET}
     restart: unless-stopped
+    ports:
+      - "5459:8080"
     networks:
       - db-network
       - gateway2-net
@@ -180,13 +182,15 @@ services:
   db-user:
     image: postgres:15
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: userdb
+      - POSTGRES_USER=${DB_USER_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD_USER} 
+      - POSTGRES_DB=${DB_NAME_USER}
+    env_file:
+      - .env
     ports:
       - "5420:5432"
     volumes:
-      -  ./src/services/user-service/internal/db/init:/docker-entrypoint-initdb.d
+      - ./src/services/user-service/internal/db/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -194,6 +198,7 @@ services:
       retries: 5
     networks:
       - db-network
+
       
   user-service-1:
     build: 

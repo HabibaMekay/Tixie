@@ -1,168 +1,153 @@
 package api
 
 import (
-    "encoding/json"
-    "net/http"
+	"net/http"
 	"strconv"
-    "github.com/gorilla/mux"
-    "github.com/lib/pq"
-    "user-service/internal/db/models"
-    "user-service/internal/db/repos"
-    "golang.org/x/crypto/bcrypt"
+
+	"github.com/gin-gonic/gin"
+	"github.com/lib/pq"
+	"golang.org/x/crypto/bcrypt"
+
+	"user-service/internal/db/models"
+	"user-service/internal/db/repos"
 )
 
+type Handler struct {
+	repo *repos.UserRepository
+}
+
+func NewHandler(repo *repos.UserRepository) *Handler {
+	return &Handler{repo: repo}
+}
+
 func hashPassword(password string) (string, error) {
-    hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-    if err != nil {
-        return "", err
-    }
-    return string(hashedPassword), nil
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hashedPassword), nil
 }
 
-func CreateUser(w http.ResponseWriter, r *http.Request) {
-    var user models.User
-    err := json.NewDecoder(r.Body).Decode(&user)
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusBadRequest)
-        return
-    }
+func (h *Handler) CreateUser(c *gin.Context) {
+	var user models.User
+	if err := c.ShouldBindJSON(&user); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
-    // Hash the password before saving the user
-    hashedPassword, err := hashPassword(user.Password)
-    if err != nil {
-        http.Error(w, "Failed to hash password", http.StatusInternalServerError)
-        return
-    }
-    user.Password = hashedPassword
+	hashedPassword, err := hashPassword(user.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+	user.Password = hashedPassword
 
-    err = repos.CreateUser(user)
-    if err != nil {
-        if pgErr, ok := err.(*pq.Error); ok {
-            if pgErr.Code == "23505" { // unique violation
-                http.Error(w, "Username or Email already exists", http.StatusConflict)
-                return
-            }
-        }
+	err = h.repo.CreateUser(user)
+	if err != nil {
+		if pgErr, ok := err.(*pq.Error); ok && pgErr.Code == "23505" {
+			c.JSON(http.StatusConflict, gin.H{"error": "Username or Email already exists"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		return
+	}
 
-        http.Error(w, "Failed to create user", http.StatusInternalServerError)
-        return
-    }
-
-    w.WriteHeader(http.StatusCreated)
+	c.Status(http.StatusCreated)
 }
 
-
-
-func GetUsers(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Content-Type", "application/json")
-
-    users, err := repos.GetAllUsers()
-    if err != nil {
-        http.Error(w, "Failed to retrieve users", http.StatusInternalServerError)
-        return
-    }
-
-    json.NewEncoder(w).Encode(users)
+func (h *Handler) GetUsers(c *gin.Context) {
+	users, err := h.repo.GetAllUsers()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve users"})
+		return
+	}
+	c.JSON(http.StatusOK, users)
 }
 
-func GetUserByID(w http.ResponseWriter, r *http.Request) {
-    params := mux.Vars(r)
-    id, err := strconv.Atoi(params["id"])
-    if err != nil {
-        http.Error(w, "Invalid user ID", http.StatusBadRequest)
-        return
-    }
+func (h *Handler) GetUserByID(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
 
-    user, err := repos.GetUserByID(id)
-    if err != nil {
-        http.Error(w, "User not found", http.StatusNotFound)
-        return
-    }
+	user, err := h.repo.GetUserByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
 
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(user)
+	c.JSON(http.StatusOK, user)
 }
 
-func UpdateUser(w http.ResponseWriter, r *http.Request) {
-    params := mux.Vars(r)
-    id, err := strconv.Atoi(params["id"])
-    if err != nil {
-        http.Error(w, "Invalid user ID", http.StatusBadRequest)
-        return
-    }
+func (h *Handler) UpdateUser(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
 
-    var updatedUser models.User
-    if err := json.NewDecoder(r.Body).Decode(&updatedUser); err != nil {
-        http.Error(w, "Invalid request body", http.StatusBadRequest)
-        return
-    }
+	var updatedUser models.User
+	if err := c.ShouldBindJSON(&updatedUser); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
 
-    // Hash 
-    if updatedUser.Password != "" {
-        hashedPassword, err := hashPassword(updatedUser.Password)
-        if err != nil {
-            http.Error(w, "Failed to hash password", http.StatusInternalServerError)
-            return
-        }
-        updatedUser.Password = hashedPassword
-    }
+	if updatedUser.Password != "" {
+		hashedPassword, err := hashPassword(updatedUser.Password)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+			return
+		}
+		updatedUser.Password = hashedPassword
+	}
 
-    err = repos.UpdateUser(id, updatedUser)
-    if err != nil {
-        if pgErr, ok := err.(*pq.Error); ok {
-            if pgErr.Code == "23505" { // unique violation
-                http.Error(w, "Username or Email already exists", http.StatusConflict)
-                return
-            }
-        }
-    
-        http.Error(w, "Failed to update user", http.StatusInternalServerError)
-        return
-    }
+	err = h.repo.UpdateUser(id, updatedUser)
+	if err != nil {
+		if pgErr, ok := err.(*pq.Error); ok && pgErr.Code == "23505" {
+			c.JSON(http.StatusConflict, gin.H{"error": "Username or Email already exists"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+		return
+	}
 
-    w.WriteHeader(http.StatusOK)
+	c.Status(http.StatusOK)
 }
 
+func (h *Handler) DeleteUser(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
 
-func DeleteUser(w http.ResponseWriter, r *http.Request) {
-    params := mux.Vars(r)
-    id, err := strconv.Atoi(params["id"])
-    if err != nil {
-        http.Error(w, "Invalid user ID", http.StatusBadRequest)
-        return
-    }
+	err = h.repo.DeleteUser(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+		return
+	}
 
-    err = repos.DeleteUser(id)
-    if err != nil {
-        http.Error(w, "Failed to delete user", http.StatusInternalServerError)
-        return
-    }
-
-    w.WriteHeader(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
 }
 
+func (h *Handler) AuthenticateUser(c *gin.Context) {
+	var creds models.Credentials
+	if err := c.ShouldBindJSON(&creds); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
 
-func AuthenticateUser(w http.ResponseWriter, r *http.Request) {
-    var creds models.Credentials
-    if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-        http.Error(w, "Invalid request body", http.StatusBadRequest)
-        return
-    }
+	valid, err := h.repo.CheckCredentials(creds.Username, creds.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
 
-    // Check if the username and password match
-    valid, err := repos.CheckCredentials(creds.Username, creds.Password)
-    if err != nil {
-        http.Error(w, "Internal server error", http.StatusInternalServerError)
-        return
-    }
+	if !valid {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		return
+	}
 
-    if !valid {
-        http.Error(w, "Invalid username or password", http.StatusUnauthorized)
-        return
-    }
-
-    w.WriteHeader(http.StatusOK)
+	c.Status(http.StatusOK)
 }
-
-
-

@@ -1,5 +1,6 @@
 const express = require('express');
-const cors = require('cors');
+const httpProxy = require('http-proxy');
+const { URL } = require('url');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const redis = require('./redis/r_client.js');
 const rateLimiter = require('./limiters/rate_limiter.js');
@@ -15,63 +16,49 @@ const targetAuthService = process.env.AUTH_SERVICE_URL;
 const app = express();
 const PORT = process.env.PORT || 8083;
 
-app.use(cors());
 app.use(express.json());
-
-// Header for gateway instance
-app.use((req, res, next) => {
-  res.setHeader('X-Gateway-Instance', instance);
-  next();
-});
+app.use(express.urlencoded({ extended: true }));
 
 // app.use('/api', concurrencyLimiter);
 // app.use('/api', throttlingLimiter);
 // app.use('/api', rateLimiter);
 
 // Apply JWT verification only to protected endpoints
-app.use((req, res, next) => {
-  const openPaths = [
-    '/api/v1/user',         
-    '/api/v1/auth/login',
-    '/api/v1/auth/oauth2-login',
-    '/api/v1/auth/callback',
-    '/api/test'
-  ];
-  const isOpen = openPaths.some(path => req.path.startsWith(path) && (req.method === 'POST' || req.method === 'GET'));
-  if (isOpen) return next();
-  return verification(req, res, next);
+// app.use((req, res, next) => {
+//   const openPaths = [
+//     '/api/v1/user',
+//     '/api/v1/tickets',         
+//     '/api/v1/auth/login',
+//     '/api/v1/auth/oauth2-login',
+//     '/api/v1/auth/callback',
+//     '/api/test'
+//   ];
+//   const isOpen = openPaths.some(path => req.path.startsWith(path) && (req.method === 'POST' || req.method === 'GET'));
+//   if (isOpen) return next();
+//   return verification(req, res, next);
+// });
+
+
+const proxyOptions = (target) => ({
+  target,
+  changeOrigin: true,
+  pathRewrite: (path, req) => path.replace(/^\/api\/v1\/(user|auth|tickets)/, ''),
+  selfHandleResponse: false,
+  logLevel: 'debug',
+  onProxyReq: (proxyReq, req, res) => {
+    if (req.body && Object.keys(req.body).length) {
+      const bodyData = JSON.stringify(req.body);
+
+      proxyReq.setHeader('Content-Type', 'application/json');
+      proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+      proxyReq.write(bodyData);
+    }
+  }
 });
 
-
-app.use('/api/v1/tickets', createProxyMiddleware({
-  target: targetService,
-  changeOrigin: true,
-  pathRewrite: { '^/api/v1/tickets': '' },
-  onProxyReq: (proxyReq, req) => {
-    console.log(`[PROXY] ${req.method} ${req.originalUrl} → ${targetService}/tickets${req.url}`);
-  },
-}));
-
-
-app.use('/api/v1/user', createProxyMiddleware({
-  target: targetUserService,
-  changeOrigin: true,
-  secure: true,
-  pathRewrite: { ['/api/v1/user']: '' },
-  onProxyReq: (proxyReq, req) => {
-    console.log(`[PROXY] ${req.method} ${req.originalUrl} → ${targetUserService}${req.url}`);
-  },
-}));
-
-
-app.use('/api/v1/auth', createProxyMiddleware({
-  target: targetAuthService,
-  changeOrigin: true,
-  pathRewrite: { '^/api/v1/auth': '' },
-  onProxyReq: (proxyReq, req) => {
-    console.log(`[PROXY] ${req.method} ${req.originalUrl} → ${targetAuthService}/auth${req.url}`);
-  },
-}));
+app.use('/api/v1/user', createProxyMiddleware(proxyOptions(targetUserService)));
+app.use('/api/v1/auth', createProxyMiddleware(proxyOptions(targetAuthService)));
+app.use('/api/v1/tickets', createProxyMiddleware(proxyOptions(targetService)));
 
 
 app.get('/api/test', (req, res) => {
