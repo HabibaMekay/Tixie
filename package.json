@@ -1,12 +1,15 @@
 {
   "dependencies": {
+    "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "express-rate-limit": "^7.5.0",
     "http-proxy": "^1.18.1",
     "http-proxy-middleware": "^3.0.5",
     "ioredis": "^5.6.1",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "querystring": "^0.2.1",
+    "raw-body": "^3.0.0"
   },
   "overrides": {
     "cross-spawn": "7.0.5"

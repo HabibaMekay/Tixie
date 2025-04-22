@@ -1,12 +1,14 @@
 const express = require('express');
 const httpProxy = require('http-proxy');
 const { URL } = require('url');
-const { createProxyMiddleware } = require('http-proxy-middleware');
 const redis = require('./redis/r_client.js');
 const rateLimiter = require('./limiters/rate_limiter.js');
 const concurrencyLimiter = require('./limiters/concurrency_limiter.js');
 const throttlingLimiter = require('./limiters/throttling_limiter.js');
 const verification = require('./jwt/jwt.js');
+const getRawBody = require('raw-body');
+const bodyParser = require('body-parser');
+const queryString = require('querystring');
 
 const instance = process.env.INSTANCE_NAME;
 const targetService = process.env.TICKET_SERVICE_URL;
@@ -16,8 +18,33 @@ const targetAuthService = process.env.AUTH_SERVICE_URL;
 const app = express();
 const PORT = process.env.PORT || 8083;
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+const proxy = httpProxy.createProxyServer({ changeOrigin: true });
+
+proxy.on( 'proxyReq', ( proxyReq, req, res, options ) => {
+  if ( !req.body || !Object.keys( req.body ).length ) {
+    return;
+  }
+
+  let contentType = proxyReq.getHeader( 'Content-Type' );
+  let bodyData;
+
+  if ( contentType.includes( 'application/json' ) ) {
+    bodyData = JSON.stringify( req.body );
+  }
+
+  if ( contentType.includes( 'application/x-www-form-urlencoded' ) ) {
+    bodyData = queryString.stringify( req.body );
+  }
+
+  if ( bodyData ) {
+    proxyReq.setHeader( 'Content-Length', Buffer.byteLength( bodyData ) );
+    proxyReq.write( bodyData );
+  }
+});
+
 
 // app.use('/api', concurrencyLimiter);
 // app.use('/api', throttlingLimiter);
@@ -39,26 +66,20 @@ app.use(express.urlencoded({ extended: true }));
 // });
 
 
-const proxyOptions = (target) => ({
-  target,
-  changeOrigin: true,
-  pathRewrite: (path, req) => path.replace(/^\/api\/v1\/(user|auth|tickets)/, ''),
-  selfHandleResponse: false,
-  logLevel: 'debug',
-  onProxyReq: (proxyReq, req, res) => {
-    if (req.body && Object.keys(req.body).length) {
-      const bodyData = JSON.stringify(req.body);
-
-      proxyReq.setHeader('Content-Type', 'application/json');
-      proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
-      proxyReq.write(bodyData);
-    }
-  }
+app.use('/api/v1/user', (req, res) => {
+  req.url = req.url.replace(/^\/api\/v1\/user/, '');
+  proxy.web(req, res, { target: targetUserService });
 });
 
-app.use('/api/v1/user', createProxyMiddleware(proxyOptions(targetUserService)));
-app.use('/api/v1/auth', createProxyMiddleware(proxyOptions(targetAuthService)));
-app.use('/api/v1/tickets', createProxyMiddleware(proxyOptions(targetService)));
+app.use('/api/v1/auth', (req, res) => {
+  req.url = req.url.replace(/^\/api\/v1\/auth/, '');
+  proxy.web(req, res, { target: targetAuthService });
+});
+
+app.use('/api/v1/tickets', (req, res) => {
+  req.url = req.url.replace(/^\/api\/v1\/tickets/, '');
+  proxy.web(req, res, { target: targetTicketService });
+});
 
 
 app.get('/api/test', (req, res) => {
