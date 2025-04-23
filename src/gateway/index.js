@@ -4,7 +4,6 @@ const { URL } = require('url');
 const redis = require('./redis/r_client.js');
 const rateLimiter = require('./limiters/rate_limiter.js');
 const concurrencyLimiter = require('./limiters/concurrency_limiter.js');
-const throttlingLimiter = require('./limiters/throttling_limiter.js');
 const verification = require('./jwt/jwt.js');
 const getRawBody = require('raw-body');
 const bodyParser = require('body-parser');
@@ -17,20 +16,22 @@ const targetAuthService = process.env.AUTH_SERVICE_URL;
 
 const app = express();
 const PORT = process.env.PORT || 8083;
-
+app.set('trust proxy', true);
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 const proxy = httpProxy.createProxyServer({ changeOrigin: true });
 
 proxy.on( 'proxyReq', ( proxyReq, req, res, options ) => {
+  const authHeader = req.headers['Authorization'];
+  if (authHeader) {
+    proxyReq.setHeader('Authorization', authHeader);
+  }
   if ( !req.body || !Object.keys( req.body ).length ) {
     return;
   }
-
   let contentType = proxyReq.getHeader( 'Content-Type' );
   let bodyData;
-
   if ( contentType.includes( 'application/json' ) ) {
     bodyData = JSON.stringify( req.body );
   }
@@ -46,24 +47,22 @@ proxy.on( 'proxyReq', ( proxyReq, req, res, options ) => {
 });
 
 
-// app.use('/api', concurrencyLimiter);
-// app.use('/api', throttlingLimiter);
-// app.use('/api', rateLimiter);
+app.use('/api', concurrencyLimiter);
+app.use('/api', rateLimiter);
 
 // Apply JWT verification only to protected endpoints
-// app.use((req, res, next) => {
-//   const openPaths = [
-//     '/api/v1/user',
-//     '/api/v1/tickets',         
-//     '/api/v1/auth/login',
-//     '/api/v1/auth/oauth2-login',
-//     '/api/v1/auth/callback',
-//     '/api/test'
-//   ];
-//   const isOpen = openPaths.some(path => req.path.startsWith(path) && (req.method === 'POST' || req.method === 'GET'));
-//   if (isOpen) return next();
-//   return verification(req, res, next);
-// });
+app.use((req, res, next) => {
+  const openPaths = [
+    '/api/v1/user', // user signup     
+    '/api/v1/auth/login', //login duhh
+    '/api/v1/auth/oauth2-login', //logging in using oauth2
+    '/api/v1/auth/callback', //oauth callback
+    '/api/test'
+  ];
+  const isOpen = openPaths.some(path => req.path.startsWith(path) && (req.method === 'POST' || req.method === 'GET'));
+  if (isOpen) return next();
+  return verification(req, res, next);
+});
 
 
 app.use('/api/v1/user', (req, res) => {
@@ -78,7 +77,7 @@ app.use('/api/v1/auth', (req, res) => {
 
 app.use('/api/v1/tickets', (req, res) => {
   req.url = req.url.replace(/^\/api\/v1\/tickets/, '');
-  proxy.web(req, res, { target: targetTicketService });
+  proxy.web(req, res, { target: targetService });
 });
 
 
