@@ -20,7 +20,7 @@ func StripeWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sigHeader := r.Header.Get("Stripe-Signature")
-	secret := os.Getenv("STRIPE_WEBHOOK_SECRET")
+	secret := os.Getenv("SECRET_KEY")
 
 	event, err := webhook.ConstructEvent(payload, sigHeader, secret)
 	if err != nil {

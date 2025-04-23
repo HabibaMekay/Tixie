@@ -26,7 +26,7 @@ WORKDIR /app
 COPY --from=builder /app/auth-service .
 
 # Copy the .env file if needed
-COPY .env .
+
 
 # Expose the port the app runs on
 EXPOSE 8080
