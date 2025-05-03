@@ -10,5 +10,5 @@ import (
 func SetupRoutes(r *gin.Engine, purchaseRepo *repos.PurchaseRepository, ticketClient *http.Client) {
 	handler := NewReservationHandler(purchaseRepo, ticketClient)
 	r.POST("/reserve", handler.ReserveTicket)
-	r.GET("/ticket/:id", handler.GetTicket)
+	r.GET("/:id", handler.GetTicket)
 }

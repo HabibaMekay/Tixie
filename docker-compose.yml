@@ -13,8 +13,6 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     container_name: ticket-db
-    ports:
-      - "5434:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./src/services/ticket-service/internal/db/init:/docker-entrypoint-initdb.d
@@ -96,8 +94,6 @@ services:
         POSTGRES_PASSWORD: ${DB_PASSWORD_RESERVATION}
         POSTGRES_DB: ${DB_NAME_RESERVATION}
       container_name: reservation-db
-      ports:
-      - "5433:5432"
       volumes:
         - db-data-reservation:/var/lib/postgresql/data
         - ./src/services/reservation-service/internal/db/init:/docker-entrypoint-initdb.d
@@ -143,14 +139,134 @@ services:
   #       - ./.env
   #     restart: unless-stopped
 
-  # auth:
-  #   build:
-  #     context: ./services/auth
-  #   ports:
-  #     - "8080:8080"
-  #   env_file:
-  #     - ./.env
-  #   restart: unless-stopped
+  auth-1:
+    build:
+      context: ./src/services/auth
+    container_name: auth-1
+    environment:
+      - USER_SERVICE_URL=${USER_SERVICE_1}
+      - JWT_SECRET=${JWT_SECRET}
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./.env
+    restart: unless-stopped
+    networks:
+      - db-network
+      - gateway1-net
+  auth-2:
+    build:
+      context: ./src/services/auth
+    container_name: auth-2
+    environment:
+      - USER_SERVICE_URL=${USER_SERVICE_1}
+      - JWT_SECRET=${JWT_SECRET}
+    restart: unless-stopped
+    ports:
+      - "5459:8080"
+    networks:
+      - db-network
+      - gateway2-net
+  auth-3:
+    build:
+      context: ./src/services/auth
+    container_name: auth-3
+    environment:
+      - USER_SERVICE_URL=${USER_SERVICE_1}
+      - JWT_SECRET=${JWT_SECRET}
+    restart: unless-stopped
+    networks:
+      - db-network
+      - gateway3-net
+    
+  db-user:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=${DB_USER_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD_USER} 
+      - POSTGRES_DB=${DB_NAME_USER}
+    env_file:
+      - .env
+    ports:
+      - "5420:5432"
+    volumes:
+      - ./src/services/user-service/internal/db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - db-network
+
+      
+  user-service-1:
+    build: 
+      context: ./src/services/user-service
+      dockerfile: Dockerfile
+    container_name: user-service-1
+    ports:
+      - "2341:8081"
+    env_file:
+      - .env
+    depends_on:
+      db-user:  
+        condition: service_healthy  
+    networks:
+      - db-network
+      - gateway1-net
+  
+  user-service-2:
+    build: 
+      context: ./src/services/user-service
+      dockerfile: Dockerfile
+    container_name: user-service-2
+    env_file:
+      - .env
+    depends_on:
+      db-user:  
+        condition: service_healthy  
+    networks:
+      - db-network
+      - gateway2-net
+  user-service-3:
+    build: 
+      context: ./src/services/user-service
+      dockerfile: Dockerfile
+    container_name: user-service-3
+    env_file:
+      - .env
+    depends_on:
+      db-user:  
+        condition: service_healthy  
+    networks:
+      - db-network
+      - gateway3-net
+  event-db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: eventdb
+    volumes:
+      - ./src/services/event-service/internal/db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  event-service:
+    build: 
+      context: ./src/services/event-service
+      dockerfile: Dockerfile
+    depends_on:
+      event-db:
+        condition: service_healthy
+    networks:
+      - app-network
 
   gateway1:
     build:
@@ -161,9 +277,14 @@ services:
       - REDIS_URL=${REDIS_URL}
       - INSTANCE_NAME=${INSTANCE_NAME_1}
       - TICKET_SERVICE_URL=${TICKET_SERVICE_1}
+      - USER_SERVICE_URL=${USER_SERVICE_1}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_1}
+      - JWT_SECRET=${JWT_SECRET}
     depends_on:
       - redis
       - ticket-service-1
+      - user-service-1
+      - auth-1
     restart: unless-stopped
     networks:
       - app-network
@@ -178,9 +299,14 @@ services:
       - REDIS_URL=${REDIS_URL}
       - INSTANCE_NAME=${INSTANCE_NAME_2}
       - TICKET_SERVICE_URL=${TICKET_SERVICE_2}
+      - USER_SERVICE_URL=${USER_SERVICE_2}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_2}
+      - JWT_SECRET=${JWT_SECRET}
     depends_on:
       - redis
       - ticket-service-2
+      - user-service-2
+      - auth-2
     restart: unless-stopped
     networks:
       - app-network
@@ -195,9 +321,14 @@ services:
       - REDIS_URL=${REDIS_URL}
       - INSTANCE_NAME=${INSTANCE_NAME_3}
       - TICKET_SERVICE_URL=${TICKET_SERVICE_3}
+      - USER_SERVICE_URL=${USER_SERVICE_3}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_3}
+      - JWT_SECRET=${JWT_SECRET}
     depends_on:
       - redis
       - ticket-service-3
+      - user-service-3
+      - auth-3
     restart: unless-stopped
     networks:
       - app-network
@@ -230,3 +361,4 @@ networks:
     driver: bridge
   gateway3-net:
     driver: bridge
+

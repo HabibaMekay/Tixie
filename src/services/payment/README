@@ -3,6 +3,7 @@ here are what to install
 ```bash
 go get github.com/stripe/stripe-go
 go get github.com/gorilla/mux
+go get github.com/google/uuid
 ```
 
 run:
