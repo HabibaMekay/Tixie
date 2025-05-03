@@ -10,10 +10,6 @@ Our goal is to simplify ticket transactions, increase event visibility, and enha
 
 ## Tech Stack
 
-### Frontend
-
-- **React** – Frontend framework for UI
-
 ### Backend
 
 - **GoLang** – Backend programming language
@@ -28,17 +24,11 @@ Our goal is to simplify ticket transactions, increase event visibility, and enha
 
 - **HAProxy** – Load balancing
 - **RabbitMQ** – Message broker
-- **WebSockets** – Real-time communication
 
 ### Security & Authentication
 
 - **OAuth2** – Authentication protocol
 - **JWT** – Secure user authentication
-
-### Resilience & Reliability
-
-- **GoBreaker** – Circuit breaker implementation
-- **RetryableHTTP** – Automatic request retries
 
 ### Payments
 
