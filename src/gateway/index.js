@@ -13,6 +13,7 @@ const instance = process.env.INSTANCE_NAME;
 const targetService = process.env.TICKET_SERVICE_URL;
 const targetUserService = process.env.USER_SERVICE_URL;
 const targetAuthService = process.env.AUTH_SERVICE_URL;
+const targetEventService = process.env.EVENT_SERVICE_URL;
 
 const app = express();
 const PORT = process.env.PORT || 8083;
@@ -53,10 +54,10 @@ app.use('/api', rateLimiter);
 // Apply JWT verification only to protected endpoints
 app.use((req, res, next) => {
   const openPaths = [
-    '/api/v1/user', // user signup     
-    '/api/v1/auth/login', //login duhh
-    '/api/v1/auth/oauth2-login', //logging in using oauth2
-    '/api/v1/auth/callback', //oauth callback
+    '/api/user', // user signup     
+    '/api/auth/login', //login duhh
+    '/api/auth/oauth2-login', //logging in using oauth2
+    '/api/auth/callback', //oauth callback
     '/api/test'
   ];
   const isOpen = openPaths.some(path => req.path.startsWith(path) && (req.method === 'POST' || req.method === 'GET'));
@@ -65,21 +66,25 @@ app.use((req, res, next) => {
 });
 
 
-app.use('/api/v1/user', (req, res) => {
-  req.url = req.url.replace(/^\/api\/v1\/user/, '');
+app.use('/api/user', (req, res) => {
+  req.url = req.url.replace(/^\/api\/user/, '');
   proxy.web(req, res, { target: targetUserService });
 });
 
-app.use('/api/v1/auth', (req, res) => {
-  req.url = req.url.replace(/^\/api\/v1\/auth/, '');
+app.use('/api/auth', (req, res) => {
+  req.url = req.url.replace(/^\/api\/auth/, '');
   proxy.web(req, res, { target: targetAuthService });
 });
 
-app.use('/api/v1/tickets', (req, res) => {
-  req.url = req.url.replace(/^\/api\/v1\/tickets/, '');
+app.use('/api/tickets', (req, res) => {
+  req.url = req.url.replace(/^\/api\/tickets/, '');
   proxy.web(req, res, { target: targetService });
 });
 
+app.use('/api/event', (req, res) => {
+  req.url = req.url.replace(/^\/api\/event/, '');
+  proxy.web(req, res, { target: targetEventService });
+});
 
 app.get('/api/test', (req, res) => {
   res.json({ message: 'Success! You have not hit the rate limit.' ,

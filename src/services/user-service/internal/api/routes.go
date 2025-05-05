@@ -9,7 +9,7 @@ import (
 func SetupRoutes(r *gin.Engine, repo *repos.UserRepository) {
 	handler := NewHandler(repo)
 
-	users := r.Group("")
+	users := r.Group("/v1")
 	{
 		users.POST("", handler.CreateUser)
 		users.GET("", handler.GetUsers)

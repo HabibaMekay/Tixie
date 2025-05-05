@@ -9,6 +9,9 @@ import (
 
 func SetupRoutes(r *gin.Engine, purchaseRepo *repos.PurchaseRepository, ticketClient *http.Client) {
 	handler := NewReservationHandler(purchaseRepo, ticketClient)
-	r.POST("/reserve", handler.ReserveTicket)
-	r.GET("/:id", handler.GetTicket)
+	reservation := r.Group("/v1")
+	{
+		reservation.POST("/", handler.ReserveTicket)
+		reservation.GET("/:id", handler.GetTicket)
+	}
 }
