@@ -14,6 +14,7 @@ const targetService = process.env.TICKET_SERVICE_URL;
 const targetUserService = process.env.USER_SERVICE_URL;
 const targetAuthService = process.env.AUTH_SERVICE_URL;
 const targetEventService = process.env.EVENT_SERVICE_URL;
+const targetReserveService = process.env.RESERVE_SERVICE_URL;
 
 const app = express();
 const PORT = process.env.PORT || 8083;
@@ -84,6 +85,11 @@ app.use('/api/tickets', (req, res) => {
 app.use('/api/event', (req, res) => {
   req.url = req.url.replace(/^\/api\/event/, '');
   proxy.web(req, res, { target: targetEventService });
+});
+
+app.use('/api/reserve', (req, res) => {
+  req.url = req.url.replace(/^\/api\/reserve/, '');
+  proxy.web(req, res, { target: targetReserveService });
 });
 
 app.get('/api/test', (req, res) => {
