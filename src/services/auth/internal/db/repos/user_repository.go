@@ -1,13 +1,12 @@
-package services
+package repos
 
 import (
+	"auth-service/config"
+	"auth-service/internal/db/models"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
-
-	"auth-service/config"
-	"auth-service/models"
 )
 
 func CreateUser(user models.UserDTO) error {
@@ -15,15 +14,13 @@ func CreateUser(user models.UserDTO) error {
 	if err != nil {
 		return err
 	}
-
 	resp, err := http.Post(config.UserServiceURL, "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("user-service responded with status: %v", resp.Status)
+		return fmt.Errorf("user service returned: %s", resp.Status)
 	}
 	return nil
 }
@@ -33,12 +30,10 @@ func AuthenticateUser(creds models.Credentials) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-
 	resp, err := http.Post(fmt.Sprintf("%s/authenticate", config.UserServiceURL), "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return false, err
 	}
 	defer resp.Body.Close()
-
 	return resp.StatusCode == http.StatusOK, nil
 }

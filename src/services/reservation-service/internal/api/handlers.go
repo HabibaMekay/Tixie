@@ -258,5 +258,6 @@ func (h *ReservationHandler) ReserveTicket(c *gin.Context) {
 func (h *ReservationHandler) processPayment(userID int, amount float64) bool {
 	// Placeholder for payment processing logic
 	fmt.Printf("Processing payment: user_id=%d, amount=%.2f\n", userID, amount)
+
 	return true
 }

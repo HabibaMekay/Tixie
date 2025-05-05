@@ -130,18 +130,20 @@ services:
       - db-network
       - gateway1-net 
 
-  # payment:
-  #     build:
-  #       context: ./services/payment
-  #     ports:
-  #       - "8088:8088"
-  #     env_file:
-  #       - ./.env
-  #     restart: unless-stopped
+  payment:
+      build:
+        context: ./src/services/payment
+      ports:
+        - "8088:8088"
+      env_file:
+        - ./.env
+      restart: unless-stopped
 
   auth-1:
     build:
       context: ./src/services/auth
+      dockerfile: ./cmd/Dockerfile
+
     container_name: auth-1
     environment:
       - USER_SERVICE_URL=${USER_SERVICE_1}
@@ -157,6 +159,8 @@ services:
   auth-2:
     build:
       context: ./src/services/auth
+      # dockerfile: ./src/services/auth/cmd/Dockerfile
+      dockerfile: ./cmd/Dockerfile
     container_name: auth-2
     environment:
       - USER_SERVICE_URL=${USER_SERVICE_1}
@@ -170,6 +174,7 @@ services:
   auth-3:
     build:
       context: ./src/services/auth
+      dockerfile: ./cmd/Dockerfile
     container_name: auth-3
     environment:
       - USER_SERVICE_URL=${USER_SERVICE_1}
