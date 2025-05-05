@@ -1,12 +1,17 @@
 package api
 
 import (
-    "github.com/gorilla/mux"
+	"event-service/internal/db/repos"
+
+	"github.com/gin-gonic/gin"
 )
 
-func SetupRouter() *mux.Router {
-    r := mux.NewRouter()
-    r.HandleFunc("/events", GetEvents).Methods("GET")
-    r.HandleFunc("/events", CreateEvent).Methods("POST")
-    return r
+func SetupRoutes(r *gin.Engine, repo *repos.EventRepository) {
+	handler := NewEventHandler(repo)
+
+	events := r.Group("/v1")
+	{
+		events.GET("", handler.GetEvents)
+		events.POST("", handler.CreateEvent)
+	}
 }

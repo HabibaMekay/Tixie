@@ -1,24 +1,36 @@
 package db
 
 import (
-    "database/sql"
-    _ "github.com/lib/pq"
-    "log"
+	"database/sql"
+	"fmt"
+	"log"
+	"os"
+
+	_ "github.com/lib/pq"
 )
 
-var DB *sql.DB
+func ConnectDB() *sql.DB {
+	connStr := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		os.Getenv("DB_EVENT_HOST"),
+		os.Getenv("DB_EVENT_PORT"),
+		os.Getenv("DB_EVENT_USER"),
+		os.Getenv("DB_EVENT_PASSWORD"),
+		os.Getenv("DB_EVENT_NAME"),
+		os.Getenv("DB_EVENT_SSLMODE"),
+	)
 
-func ConnectDB() {
-    var err error
-    connStr := "host=event-db user=postgres password=password dbname=eventdb sslmode=disable"
-    DB, err = sql.Open("postgres", connStr)
-    if err != nil {
-        log.Fatal(err)
-    }
+	fmt.Println("Connection string:", connStr)
 
-    if err = DB.Ping(); err != nil {
-        log.Fatal("Cannot connect to DB:", err)
-    }
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		log.Fatalf("Failed to connect to eventdb: %v", err)
+	}
 
-    log.Println("Connected to the DB")
+	if err = db.Ping(); err != nil {
+		log.Fatalf("Failed to ping eventdb: %v", err)
+	}
+
+	log.Println("Successfully connected to eventdb")
+	return db
 }

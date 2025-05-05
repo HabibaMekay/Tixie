@@ -116,8 +116,6 @@ services:
         condition: service_healthy
       reservation-db:
         condition: service_healthy
-    ports:
-      - "9081:8081" #WILL BE REMOVED LATER
     environment:
       - DOCKER_COMPOSE=true
       - DB_HOST=${DB_HOST_RESERVATION}
@@ -129,6 +127,49 @@ services:
     networks:
       - db-network
       - gateway1-net 
+
+  reservation-service-2:
+    build:
+      context: ./src/services/reservation-service
+      dockerfile: Dockerfile
+    container_name: reservation-service-2
+    depends_on:
+      ticket-db:
+        condition: service_healthy
+      reservation-db:
+        condition: service_healthy
+    environment:
+      - DOCKER_COMPOSE=true
+      - DB_HOST=${DB_HOST_RESERVATION}
+      - DB_PORT=${DB_PORT_RESERVATION}
+      - DB_USER=${DB_USER_RESERVATION}
+      - DB_PASSWORD=${DB_PASSWORD_RESERVATION}
+      - DB_NAME=${DB_NAME_RESERVATION}
+      - DB_SSLMODE=${DB_SSLMODE_RESERVATION}
+    networks:
+      - db-network
+      - gateway2-net 
+  reservation-service-3:
+    build:
+      context: ./src/services/reservation-service
+      dockerfile: Dockerfile
+    container_name: reservation-service-3
+    depends_on:
+      ticket-db:
+        condition: service_healthy
+      reservation-db:
+        condition: service_healthy
+    environment:
+      - DOCKER_COMPOSE=true
+      - DB_HOST=${DB_HOST_RESERVATION}
+      - DB_PORT=${DB_PORT_RESERVATION}
+      - DB_USER=${DB_USER_RESERVATION}
+      - DB_PASSWORD=${DB_PASSWORD_RESERVATION}
+      - DB_NAME=${DB_NAME_RESERVATION}
+      - DB_SSLMODE=${DB_SSLMODE_RESERVATION}
+    networks:
+      - db-network
+      - gateway3-net 
 
   # payment:
   #     build:
@@ -256,18 +297,65 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - app-network
+      - db-network
 
-  event-service:
+  event-service-1:
     build: 
       context: ./src/services/event-service
       dockerfile: Dockerfile
     depends_on:
       event-db:
         condition: service_healthy
+    environment:
+      - DOCKER_COMPOSE=true
+      - DB_HOST=${DB_USER_HOST}
+      - DB_PORT=${DB_PORT_EVENT}
+      - DB_USER=${DB_USER_EVENT}
+      - DB_PASSWORD=${DB_PASSWORD_EVENT}
+      - DB_NAME=${DB_NAME_EVENT}
+      - DB_SSLMODE=${DB_SSLMODE_EVENT}
     networks:
-      - app-network
+      - db-network
+      - gateway1-net
+  
 
+  event-service-2:
+    build: 
+      context: ./src/services/event-service
+      dockerfile: Dockerfile
+    depends_on:
+      event-db:
+        condition: service_healthy
+    environment:
+      - DOCKER_COMPOSE=true
+      - DB_HOST=${DB_USER_HOST}
+      - DB_PORT=${DB_PORT_EVENT}
+      - DB_USER=${DB_USER_EVENT}
+      - DB_PASSWORD=${DB_PASSWORD_EVENT}
+      - DB_NAME=${DB_NAME_EVENT}
+      - DB_SSLMODE=${DB_SSLMODE_EVENT}
+    networks:
+      - db-network
+      - gateway2-net
+
+  event-service-3:
+    build: 
+      context: ./src/services/event-service
+      dockerfile: Dockerfile
+    depends_on:
+      event-db:
+        condition: service_healthy
+    environment:
+      - DOCKER_COMPOSE=true
+      - DB_HOST=${DB_USER_HOST}
+      - DB_PORT=${DB_PORT_EVENT}
+      - DB_USER=${DB_USER_EVENT}
+      - DB_PASSWORD=${DB_PASSWORD_EVENT}
+      - DB_NAME=${DB_NAME_EVENT}
+      - DB_SSLMODE=${DB_SSLMODE_EVENT}
+    networks:
+      - db-network
+      - gateway3-net
   gateway1:
     build:
       context: .
@@ -279,6 +367,8 @@ services:
       - TICKET_SERVICE_URL=${TICKET_SERVICE_1}
       - USER_SERVICE_URL=${USER_SERVICE_1}
       - AUTH_SERVICE_URL=${AUTH_SERVICE_1}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_1}
+      - RESERVE_SERVICE_URL=${RESERVE_SERVICE_1}
       - JWT_SECRET=${JWT_SECRET}
     depends_on:
       - redis
@@ -301,6 +391,8 @@ services:
       - TICKET_SERVICE_URL=${TICKET_SERVICE_2}
       - USER_SERVICE_URL=${USER_SERVICE_2}
       - AUTH_SERVICE_URL=${AUTH_SERVICE_2}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_2}
+      - RESERVE_SERVICE_URL=${RESERVE_SERVICE_2}
       - JWT_SECRET=${JWT_SECRET}
     depends_on:
       - redis
@@ -323,6 +415,8 @@ services:
       - TICKET_SERVICE_URL=${TICKET_SERVICE_3}
       - USER_SERVICE_URL=${USER_SERVICE_3}
       - AUTH_SERVICE_URL=${AUTH_SERVICE_3}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_3}
+      - RESERVE_SERVICE_URL=${RESERVE_SERVICE_3}
       - JWT_SECRET=${JWT_SECRET}
     depends_on:
       - redis

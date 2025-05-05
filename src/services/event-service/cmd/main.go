@@ -1,17 +1,26 @@
 package main
 
 import (
-    "log"
-    "net/http"
-    "event-service/internal/db"
     "event-service/internal/api"
+    "event-service/internal/db"
+    "event-service/internal/db/repos"
+    "github.com/gin-gonic/gin"
+    "log"
 )
 
 func main() {
-    db.ConnectDB()
-    r := api.SetupRouter()
-    
-    log.Println("Event Service running on :8080")
-    log.Fatal(http.ListenAndServe(":8080", r))
+
+    dbConn := db.ConnectDB()
+    if dbConn == nil {
+        log.Fatal("Database connection failed")
+    }
+
+    repo := repos.NewEventRepository(dbConn)
+
+    r := gin.Default()
+    api.SetupRoutes(r, repo)
+
+
+    r.Run(":8080")
 }
 

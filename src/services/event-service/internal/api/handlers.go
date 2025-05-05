@@ -1,37 +1,48 @@
 package api
 
 import (
-    "encoding/json"
     "event-service/internal/db/models"
     "event-service/internal/db/repos"
     "net/http"
+
+    "github.com/gin-gonic/gin"
 )
 
-func GetEvents(w http.ResponseWriter, r *http.Request) {
-    events, err := repos.GetAllEvents()
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(events)
+
+type EventHandler struct {
+    Repo *repos.EventRepository
 }
 
-func CreateEvent(w http.ResponseWriter, r *http.Request) {
+
+func NewEventHandler(repo *repos.EventRepository) *EventHandler {
+    return &EventHandler{Repo: repo}
+}
+
+
+func (h *EventHandler) GetEvents(c *gin.Context) {
+    events, err := h.Repo.GetAllEvents()
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    c.JSON(http.StatusOK, events)
+}
+
+
+func (h *EventHandler) CreateEvent(c *gin.Context) {
     var event models.Event
-    if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
-        http.Error(w, "Invalid input", http.StatusBadRequest)
+    if err := c.ShouldBindJSON(&event); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
         return
     }
 
-    err := repos.CreateEvent(event)
-    if err != nil {
-        http.Error(w, "Failed to create event", http.StatusInternalServerError)
+    if err := h.Repo.CreateEvent(event); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create event"})
         return
     }
 
-    w.WriteHeader(http.StatusCreated)
-    json.NewEncoder(w).Encode(event)
+    c.JSON(http.StatusCreated, event)
 }
+
 
 
