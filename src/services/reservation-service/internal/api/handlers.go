@@ -55,6 +55,18 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 		return
 	}
 
+	//#########################################################
+	//#########################################################
+
+	paymentSuccess, paymentErr := h.handlePayment(1000) //$$$$$$$$$ here is hardcoded until it's fixed in event
+	if !paymentSuccess {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Payment error: %v", paymentErr)})
+		return
+	}
+
+	//##########################################################
+	//##########################################################
+
 	// Call ticket service to generate a ticket
 	ticketReq := struct {
 		EventID int `json:"event_id"`
@@ -62,16 +74,26 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 	}{EventID: input.EventID, UserID: input.UserID}
 	ticketReqBody, _ := json.Marshal(ticketReq)
 	resp, err := h.httpClient.Post(h.gatewayBaseURL+"/tickets", "application/json", bytes.NewBuffer(ticketReqBody))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to contact ticket service: %v", err)})
+	//##############################################################
+	//##############################################################
+	if err != nil || resp.StatusCode != http.StatusCreated {
+		status := http.StatusInternalServerError
+		if resp != nil {
+			defer resp.Body.Close()
+			status = resp.StatusCode
+		}
+		c.JSON(status, gin.H{"error": fmt.Sprintf("Ticket service error: %v", err)})
+		//############################################################
+		//############################################################
+		//c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to contact ticket service: %v", err)})
 		return
 	}
-	defer resp.Body.Close()
+	//defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusCreated {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Ticket service error (status: %d)", resp.StatusCode)})
-		return
-	}
+	// if resp.StatusCode != http.StatusCreated {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Ticket service error (status: %d)", resp.StatusCode)})
+	// 	return
+	// }
 
 	var ticketResp struct {
 		TicketID int `json:"ticket_id"`
@@ -127,4 +149,51 @@ func (h *Handler) validateUser(userID int) error {
 		return fmt.Errorf("user not found or service error (status: %d)", resp.StatusCode)
 	}
 	return nil
+}
+
+// this checks that the amount is ok and then 'pays' and stuff
+func (h *Handler) handlePayment(amount int) (bool, error) {
+	log.Println("Initiating payment process")
+
+	if amount <= 0 {
+		return false, fmt.Errorf("invalid amount: must be greater than zero")
+	}
+
+	payload := map[string]interface{}{
+		"amount": amount,
+	}
+	body, _ := json.Marshal(payload)
+
+	req, err := http.NewRequest("POST", "http://localhost:8088/create-payment-intent", bytes.NewBuffer(body))
+	if err != nil {
+		return false, fmt.Errorf("failed to create payment request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("payment service error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errorMsg map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&errorMsg)
+		return false, fmt.Errorf("payment service returned status %d: %v", resp.StatusCode, errorMsg)
+	}
+
+	var paymentResp struct {
+		ClientSecret   string `json:"client_secret"`
+		IdempotencyKey string `json:"idempotency_key"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&paymentResp); err != nil {
+		return false, fmt.Errorf("failed to parse payment response: %v", err)
+	}
+
+	if paymentResp.ClientSecret == "" || paymentResp.IdempotencyKey == "" {
+		return false, fmt.Errorf("missing fields in payment response")
+	}
+
+	log.Printf("Payment successful: client_secret=%s, idempotency_key=%s\n", paymentResp.ClientSecret, paymentResp.IdempotencyKey)
+	return true, nil
 }
