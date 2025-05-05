@@ -1,26 +1,36 @@
 package api
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"ticket-service/internal/db/models"
 	"ticket-service/internal/db/repos"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
-// Handler holds dependencies for API handlers.
 type Handler struct {
-	repo *repos.TicketRepository
+	repo           *repos.TicketRepository
+	gatewayBaseURL string // e.g., "http://gateway1:8083/api/v1"
+	httpClient     *http.Client
 }
 
 // NewHandler creates a new Handler with dependencies.
-func NewHandler(repo *repos.TicketRepository) *Handler {
-	return &Handler{repo: repo}
+func NewHandler(repo *repos.TicketRepository, gatewayBaseURL string) *Handler {
+	return &Handler{
+		repo:           repo,
+		gatewayBaseURL: gatewayBaseURL,
+		httpClient: &http.Client{
+			Timeout: 5 * time.Second,
+		},
+	}
 }
 
-// GetTicketByID retrieves a ticket by its ID.
 func (h *Handler) GetTicketByID(c *gin.Context) {
 	log.Println("GetTicketByID called")
 	ticketID, err := strconv.Atoi(c.Param("id"))
@@ -31,7 +41,7 @@ func (h *Handler) GetTicketByID(c *gin.Context) {
 
 	ticket, err := h.repo.GetTicketByID(ticketID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
 		return
 	}
 	if ticket == nil {
@@ -42,48 +52,73 @@ func (h *Handler) GetTicketByID(c *gin.Context) {
 	c.JSON(http.StatusOK, ticket)
 }
 
-// // GetTicketsByEventID retrieves tickets for a given event_id.
-// func (h *Handler) GetTicketsByEventID(c *gin.Context) {
-// 	eventID, err := strconv.Atoi(c.Query("event_id"))
-// 	if err != nil || eventID <= 0 {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
-// 		return
-// 	}
-
-// 	tickets, err := h.repo.GetTicketsByEventID(eventID)
-// 	if err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-// 		return
-// 	}
-
-// 	c.JSON(http.StatusOK, tickets)
-// }
-
-// CreateTicket creates a new ticket.
-func (h *Handler) CreateTicket(c *gin.Context) {
-	var ticket models.Ticket
-	if err := c.ShouldBindJSON(&ticket); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Basic validation for event_id (since there's no events table or event-service)
-	if ticket.EventID <= 0 {
+func (h *Handler) GetTicketsByEventID(c *gin.Context) {
+	log.Println("GetTicketsByEventID called")
+	eventID, err := strconv.Atoi(c.Query("event_id"))
+	if err != nil || eventID <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
 		return
 	}
 
-	createdTicket, err := h.repo.CreateTicket(&ticket)
+	tickets, err := h.repo.GetTicketsByEventID(eventID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
+		return
+	}
+
+	if len(tickets) == 0 {
+		c.JSON(http.StatusOK, gin.H{"message": "No tickets found for event", "tickets": []models.Ticket{}})
+		return
+	}
+
+	c.JSON(http.StatusOK, tickets)
+}
+
+func (h *Handler) CreateTicket(c *gin.Context) {
+	log.Println("CreateTicket called")
+	var input struct {
+		EventID int `json:"event_id" binding:"required,gt=0"`
+		UserID  int `json:"user_id" binding:"required,gt=0"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input: " + err.Error()})
+		return
+	}
+
+	if err := h.validateEvent(input.EventID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid event_id: %v", err)})
+		return
+	}
+
+	if err := h.validateUser(input.UserID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid user_id: %v", err)})
+		return
+	}
+
+	ticketCode := uuid.New().String()
+
+	ticket := &models.Ticket{
+		EventID:    input.EventID,
+		UserID:     input.UserID,
+		TicketCode: ticketCode,
+		Status:     "active",
+	}
+
+	createdTicket, err := h.repo.CreateTicket(ticket)
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key") {
+			c.JSON(http.StatusConflict, gin.H{"error": "Ticket code already exists"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusCreated, createdTicket)
 }
 
-// UpdateTicketStatus updates the status of a ticket.
 func (h *Handler) UpdateTicketStatus(c *gin.Context) {
+	log.Println("UpdateTicketStatus called")
 	ticketID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket ID"})
@@ -91,22 +126,21 @@ func (h *Handler) UpdateTicketStatus(c *gin.Context) {
 	}
 
 	var input struct {
-		Status string `json:"status"`
+		Status string `json:"status" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input: " + err.Error()})
 		return
 	}
 
-	// Basic validation for status
-	if input.Status != "available" && input.Status != "sold" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid status"})
+	if input.Status != "active" && input.Status != "used" && input.Status != "cancelled" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid status: must be active, used, or cancelled"})
 		return
 	}
 
 	ticket, err := h.repo.GetTicketByID(ticketID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
 		return
 	}
 	if ticket == nil {
@@ -116,9 +150,39 @@ func (h *Handler) UpdateTicketStatus(c *gin.Context) {
 
 	updatedTicket, err := h.repo.UpdateTicketStatus(ticketID, input.Status)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, updatedTicket)
+}
+
+func (h *Handler) validateEvent(eventID int) error {
+	url := fmt.Sprintf("%s/events/%d", h.gatewayBaseURL, eventID)
+	resp, err := h.httpClient.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to contact event service: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("event not found or service error (status: %d)", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func (h *Handler) validateUser(userID int) error {
+	url := fmt.Sprintf("%s/users/%d", h.gatewayBaseURL, userID)
+	resp, err := h.httpClient.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to contact user service: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("user not found or service error (status: %d)", resp.StatusCode)
+	}
+
+	return nil
 }

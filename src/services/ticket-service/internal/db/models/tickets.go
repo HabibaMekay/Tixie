@@ -1,11 +1,9 @@
 package models
 
-import "time"
-
 type Ticket struct {
-	ID        int       `db:"id" json:"id"`                 // Maps to id (SERIAL PK)
-	EventID   int       `db:"event_id" json:"event_id"`     // Maps to event_id (INT FK)
-	Price     float64   `db:"price" json:"price"`           // Maps to price (DECIMAL(10,2))
-	Status    string    `db:"status" json:"status"`         // Maps to status (VARCHAR(20))
-	CreatedAt time.Time `db:"created_at" json:"created_at"` // Maps to created_at (TIMESTAMP)
+	TicketID   int    `json:"ticket_id" db:"ticket_id"`
+	EventID    int    `json:"event_id" db:"event_id"`
+	UserID     int    `json:"user_id" db:"user_id"`
+	TicketCode string `json:"ticket_code" db:"ticket_code"`
+	Status     string `json:"status" db:"status"`
 }

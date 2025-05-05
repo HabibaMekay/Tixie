@@ -3,7 +3,7 @@ package models
 import "time"
 
 type Purchase struct {
-	ID           int       `db:"id"`
+	PurchaseID   int       `db:"purchase_id"`
 	TicketID     int       `db:"ticket_id"`
 	UserID       int       `db:"user_id"`
 	EventID      int       `db:"event_id"`

@@ -2,6 +2,8 @@ package repos
 
 import (
 	"database/sql"
+	"fmt"
+	"strings"
 	"ticket-service/internal/db/models"
 
 	"github.com/jmoiron/sqlx"
@@ -20,7 +22,7 @@ func NewTicketRepository(db *sqlx.DB) *TicketRepository {
 // GetTicketByID retrieves a ticket by its ID.
 func (r *TicketRepository) GetTicketByID(ticketID int) (*models.Ticket, error) {
 	var ticket models.Ticket
-	err := r.db.Get(&ticket, "SELECT * FROM ticket WHERE id=$1", ticketID)
+	err := r.db.Get(&ticket, "SELECT * FROM ticket WHERE ticket_id=$1", ticketID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -33,7 +35,7 @@ func (r *TicketRepository) GetTicketByID(ticketID int) (*models.Ticket, error) {
 // GetTicketsByEventID retrieves tickets for a given event_id.
 func (r *TicketRepository) GetTicketsByEventID(eventID int) ([]models.Ticket, error) {
 	var tickets []models.Ticket
-	err := r.db.Select(&tickets, "SELECT * FROM ticket WHERE event_id=$1 AND status='available'", eventID)
+	err := r.db.Select(&tickets, "SELECT * FROM ticket WHERE event_id=$1", eventID)
 	if err != nil {
 		return nil, err
 	}
@@ -44,10 +46,13 @@ func (r *TicketRepository) GetTicketsByEventID(eventID int) ([]models.Ticket, er
 func (r *TicketRepository) CreateTicket(ticket *models.Ticket) (*models.Ticket, error) {
 	var createdTicket models.Ticket
 	err := r.db.QueryRowx(
-		"INSERT INTO ticket (event_id, price, status) VALUES ($1, $2, $3) RETURNING *",
-		ticket.EventID, ticket.Price, ticket.Status,
+		"INSERT INTO ticket (event_id, user_id, ticket_code, status) VALUES ($1, $2, $3, $4) RETURNING *",
+		ticket.EventID, ticket.UserID, ticket.TicketCode, ticket.Status,
 	).StructScan(&createdTicket)
 	if err != nil {
+		if strings.Contains(err.Error(), "unique constraint") {
+			return nil, fmt.Errorf("ticket_code already exists")
+		}
 		return nil, err
 	}
 	return &createdTicket, nil
@@ -57,10 +62,13 @@ func (r *TicketRepository) CreateTicket(ticket *models.Ticket) (*models.Ticket, 
 func (r *TicketRepository) UpdateTicketStatus(ticketID int, status string) (*models.Ticket, error) {
 	var updatedTicket models.Ticket
 	err := r.db.QueryRowx(
-		"UPDATE ticket SET status=$1 WHERE id=$2 RETURNING *",
+		"UPDATE ticket SET status=$1 WHERE ticket_id=$2 RETURNING *",
 		status, ticketID,
 	).StructScan(&updatedTicket)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &updatedTicket, nil

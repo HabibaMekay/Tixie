@@ -6,16 +6,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SetupRoutes configures the API routes for ticket-service.
-func SetupRoutes(r *gin.Engine, repo *repos.TicketRepository) {
-	handler := NewHandler(repo)
+func SetupRoutes(r *gin.Engine, repo *repos.TicketRepository, gatewayBaseURL string) {
 
-	// API routes for tickets
+	handler := NewHandler(repo, gatewayBaseURL)
+
 	tickets := r.Group("")
 	{
+
 		tickets.GET("/:id", handler.GetTicketByID)
-		// tickets.GET("", handler.GetTicketsByEventID)
+
+		tickets.GET("", handler.GetTicketsByEventID)
+
 		tickets.POST("", handler.CreateTicket)
+
 		tickets.PUT("/:id/status", handler.UpdateTicketStatus)
 	}
 }

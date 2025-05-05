@@ -41,7 +41,7 @@ func main() {
 	router := gin.Default()
 
 	// Setup routes using the routes package
-	api.SetupRoutes(router, service.purchaseRepo, service.ticketClient)
+	api.SetupRoutes(router, service.purchaseRepo, "http://gateway1:8083/api/v1")
 
 	// Start the server
 	if err := router.Run(":8081"); err != nil {

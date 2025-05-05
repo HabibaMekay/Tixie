@@ -19,7 +19,7 @@ func main() {
 	r := gin.Default()
 
 	// Set up your API routes
-	api.SetupRoutes(r, repo)
+	api.SetupRoutes(r, repo, "http://gateway1:8083/api/v1")
 
 	// Run the server on port 8082
 	r.Run(":8082")
