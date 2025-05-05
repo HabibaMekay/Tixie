@@ -34,7 +34,7 @@ func AuthenticateUser(creds models.Credentials) (bool, error) {
 		return false, err
 	}
 
-	resp, err := http.Post(fmt.Sprintf("%s/authenticate", config.UserServiceURL), "application/json", bytes.NewBuffer(data))
+	resp, err := http.Post(fmt.Sprintf("%s/v1/authenticate", config.UserServiceURL), "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return false, err
 	}
