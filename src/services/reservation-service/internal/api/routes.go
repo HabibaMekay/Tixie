@@ -10,7 +10,7 @@ func SetupRoutes(r *gin.Engine, purchaseRepo *repos.PurchaseRepository, gatewayB
 	handler := NewHandler(purchaseRepo, gatewayBaseURL)
 	res := r.Group("/v1")
 	{
-		res.POST("/reserve", handler.ReserveTicket)
+		res.POST("/", handler.ReserveTicket)
 		//res.GET("/:id", handler.GetTicket)
 	}
 }
