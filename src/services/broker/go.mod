@@ -1,4 +1,4 @@
-module github.com/yourusername/yourproject/user-service
+module broker
 
 go 1.23.6
 
