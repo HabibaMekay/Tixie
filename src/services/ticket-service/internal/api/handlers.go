@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"ticket-service/internal/db/models"
@@ -15,16 +16,14 @@ import (
 )
 
 type Handler struct {
-	repo           *repos.TicketRepository
-	gatewayBaseURL string // e.g., "http://gateway1:8083/api/v1"
-	httpClient     *http.Client
+	repo       *repos.TicketRepository
+	httpClient *http.Client
 }
 
 // NewHandler creates a new Handler with dependencies.
-func NewHandler(repo *repos.TicketRepository, gatewayBaseURL string) *Handler {
+func NewHandler(repo *repos.TicketRepository) *Handler {
 	return &Handler{
-		repo:           repo,
-		gatewayBaseURL: gatewayBaseURL,
+		repo: repo,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
@@ -85,10 +84,10 @@ func (h *Handler) CreateTicket(c *gin.Context) {
 		return
 	}
 
-	if err := h.validateEvent(input.EventID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid event_id: %v", err)})
-		return
-	}
+	// if err := h.validateEvent(input.EventID); err != nil {
+	// 	c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid event_id: %v", err)})
+	// 	return
+	// }
 
 	if err := h.validateUser(input.UserID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid user_id: %v", err)})
@@ -158,7 +157,7 @@ func (h *Handler) UpdateTicketStatus(c *gin.Context) {
 }
 
 func (h *Handler) validateEvent(eventID int) error {
-	url := fmt.Sprintf("%s/events/v1/%d", h.gatewayBaseURL, eventID)
+	url := fmt.Sprintf("%s/v1/%d", os.Getenv("EVENT_SERVICE_URL"), eventID)
 	resp, err := h.httpClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to contact event service: %v", err)
@@ -173,7 +172,7 @@ func (h *Handler) validateEvent(eventID int) error {
 }
 
 func (h *Handler) validateUser(userID int) error {
-	url := fmt.Sprintf("%s/users/v1/%d", h.gatewayBaseURL, userID)
+	url := fmt.Sprintf("%s/v1/%d", os.Getenv("USER_SERVICE_URL"), userID)
 	resp, err := h.httpClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to contact user service: %v", err)

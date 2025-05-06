@@ -42,6 +42,11 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
       - DB_SSLMODE=${DB_SSLMODE}
+
+
+      - USER_SERVICE_URL=${USER_SERVICE_1}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_1}
+
     networks:
       - db-network
       - gateway1-net 
@@ -124,6 +129,11 @@ services:
       - DB_PASSWORD=${DB_PASSWORD_RESERVATION}
       - DB_NAME=${DB_NAME_RESERVATION}
       - DB_SSLMODE=${DB_SSLMODE_RESERVATION}
+
+
+      - TICKET_SERVICE_URL=${TICKET_SERVICE_1}
+      - USER_SERVICE_URL=${USER_SERVICE_1}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_1}
     networks:
       - db-network
       - gateway1-net 
@@ -171,14 +181,14 @@ services:
       - db-network
       - gateway3-net 
 
-  # payment:
-  #     build:
-  #       context: ./services/payment
-  #     ports:
-  #       - "8088:8088"
-  #     env_file:
-  #       - ./.env
-  #     restart: unless-stopped
+  payment:
+      build:
+        context: ./services/payment
+      ports:
+        - "8088:8088"
+      env_file:
+        - ./.env
+      restart: unless-stopped
 
   auth-1:
     build:

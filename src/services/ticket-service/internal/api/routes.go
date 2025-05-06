@@ -6,9 +6,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRoutes(r *gin.Engine, repo *repos.TicketRepository, gatewayBaseURL string) {
+func SetupRoutes(r *gin.Engine, repo *repos.TicketRepository) {
 
-	handler := NewHandler(repo, gatewayBaseURL)
+	handler := NewHandler(repo)
 
 	// API routes for tickets
 	tickets := r.Group("/v1")

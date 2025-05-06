@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"reservation-service/internal/db/models"
 	"reservation-service/internal/db/repos"
 	"time"
@@ -14,15 +16,13 @@ import (
 )
 
 type Handler struct {
-	repo           *repos.PurchaseRepository
-	gatewayBaseURL string // e.g., "http://gateway1:8083/api/v1"
-	httpClient     *http.Client
+	repo       *repos.PurchaseRepository
+	httpClient *http.Client
 }
 
-func NewHandler(repo *repos.PurchaseRepository, gatewayBaseURL string) *Handler {
+func NewHandler(repo *repos.PurchaseRepository) *Handler {
 	return &Handler{
-		repo:           repo,
-		gatewayBaseURL: gatewayBaseURL,
+		repo: repo,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
@@ -40,16 +40,6 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 		return
 	}
 
-	// if err := h.validateEvent(input.EventID); err != nil {
-	// 	c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid event_id: %v", err)})
-	// 	return
-	// }
-
-	// if err := h.validateUser(input.UserID); err != nil {
-	// 	c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid user_id: %v", err)})
-	// 	return
-	// }
-
 	//#########################################################
 	//#########################################################
 
@@ -62,13 +52,22 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 	//##########################################################
 	//##########################################################
 
+	paymentSuccess, paymentErr := h.handlePayment(1000) // Hardcoded until event price is fetched
+	if !paymentSuccess {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Payment error: %v", paymentErr)})
+		return
+	}
+
 	ticketReq := struct {
 		EventID int `json:"event_id"`
 		UserID  int `json:"user_id"`
 	}{EventID: input.EventID, UserID: input.UserID}
-	ticketReqBody, _ := json.Marshal(ticketReq)
-	resp, err := h.httpClient.Post(h.gatewayBaseURL+"/tickets/v1", "application/json", bytes.NewBuffer(ticketReqBody))
-
+	ticketReqBody, err := json.Marshal(ticketReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to marshal ticket request: %v", err)})
+		return
+	}
+	resp, err := h.httpClient.Post(os.Getenv("TICKET_SERVICE_URL")+"/v1", "application/json", bytes.NewBuffer(ticketReqBody))
 	if err != nil || resp.StatusCode != http.StatusCreated {
 		status := http.StatusInternalServerError
 		if resp != nil {
@@ -87,7 +86,6 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 		return
 	}
 
-	// Create purchase
 	purchase := &models.Purchase{
 		TicketID:     ticketResp.TicketID,
 		UserID:       input.UserID,
@@ -105,84 +103,57 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 	c.JSON(http.StatusCreated, createdPurchase)
 }
 
-// validateEvent checks if an event exists via the event service.
-func (h *Handler) validateEvent(eventID int) error {
-	url := fmt.Sprintf("%s/events/v1/%d", h.gatewayBaseURL, eventID)
-	resp, err := h.httpClient.Get(url)
-	if err != nil {
-		return fmt.Errorf("failed to contact event service: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("event not found or service error (status: %d)", resp.StatusCode)
-	}
-	return nil
-}
-
-// validateUser checks if a user exists via the user service.
-func (h *Handler) validateUser(userID int) error {
-	url := fmt.Sprintf("%s/users/v1/%d", h.gatewayBaseURL, userID)
-	resp, err := h.httpClient.Get(url)
-	if err != nil {
-		return fmt.Errorf("failed to contact user service: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("user not found or service error (status: %d)", resp.StatusCode)
-	}
-	return nil
-}
-
-// this checks that the amount is ok and then 'pays' and stuff
 func (h *Handler) handlePayment(amount int) (bool, error) {
-	// log.Println("Initiating payment process")
+	log.Println("Initiating payment process")
 
-	// if amount <= 0 {
-	// 	return false, fmt.Errorf("invalid amount: must be greater than zero")
-	// }
-
-	// payload := map[string]interface{}{
-	// 	"amount": amount,
-	// }
-	// body, _ := json.Marshal(payload)
-
-	// req, err := http.NewRequest("POST", "http://localhost:8088/create-payment-intent", bytes.NewBuffer(body))
-	// if err != nil {
-	// 	return false, fmt.Errorf("failed to create payment request: %v", err)
-	// }
-	// req.Header.Set("Content-Type", "application/json")
-
-	// resp, err := h.httpClient.Do(req)
-	// if err != nil {
-	// 	return false, fmt.Errorf("payment service error: %v", err)
-	// }
-	// defer resp.Body.Close()
-
-	// if resp.StatusCode != http.StatusOK {
-	// 	var errorMsg map[string]interface{}
-	// 	json.NewDecoder(resp.Body).Decode(&errorMsg)
-	// 	return false, fmt.Errorf("payment service returned status %d: %v", resp.StatusCode, errorMsg)
-	// }
-
-	// var paymentResp struct {
-	// 	ClientSecret   string `json:"client_secret"`
-	// 	IdempotencyKey string `json:"idempotency_key"`
-	// }
-	// if err := json.NewDecoder(resp.Body).Decode(&paymentResp); err != nil {
-	// 	return false, fmt.Errorf("failed to parse payment response: %v", err)
-	// }
-
-	// if paymentResp.ClientSecret == "" || paymentResp.IdempotencyKey == "" {
-	// 	return false, fmt.Errorf("missing fields in payment response")
-	// }
-
-	// log.Printf("Payment successful: client_secret=%s, idempotency_key=%s\n", paymentResp.ClientSecret, paymentResp.IdempotencyKey)
-	if amount == 1000 {
-		return true, nil
+	if amount <= 0 {
+		return false, fmt.Errorf("invalid amount: must be greater than zero")
 	}
 
-	return true, nil
+	payload := map[string]interface{}{
+		"amount": amount,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal payload: %v", err)
+	}
 
+	req, err := http.NewRequest("POST", os.Getenv("PAYMENT_SERVICE_URL")+"/create-payment-intent", bytes.NewBuffer(body))
+	if err != nil {
+		return false, fmt.Errorf("failed to create payment request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("payment service error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Errorf("failed to read response: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var errorMsg map[string]interface{}
+		if err := json.Unmarshal(body, &errorMsg); err != nil {
+			return false, fmt.Errorf("payment service returned status %d", resp.StatusCode)
+		}
+		return false, fmt.Errorf("payment service returned status %d: %v", resp.StatusCode, errorMsg)
+	}
+
+	var paymentResp struct {
+		ClientSecret   string `json:"client_secret"`
+		IdempotencyKey string `json:"idempotency_key"`
+	}
+	if err := json.Unmarshal(body, &paymentResp); err != nil {
+		return false, fmt.Errorf("failed to parse payment response: %v", err)
+	}
+	if paymentResp.ClientSecret == "" || paymentResp.IdempotencyKey == "" {
+		return false, fmt.Errorf("missing fields in payment response")
+	}
+
+	log.Printf("Payment successful: client_secret=%s, idempotency_key=%s\n", paymentResp.ClientSecret, paymentResp.IdempotencyKey)
+	return true, nil
 }
