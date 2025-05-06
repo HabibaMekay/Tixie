@@ -158,7 +158,7 @@ func (h *Handler) UpdateTicketStatus(c *gin.Context) {
 }
 
 func (h *Handler) validateEvent(eventID int) error {
-	url := fmt.Sprintf("%s/events/%d", h.gatewayBaseURL, eventID)
+	url := fmt.Sprintf("%s/events/v1/%d", h.gatewayBaseURL, eventID)
 	resp, err := h.httpClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to contact event service: %v", err)
@@ -173,7 +173,7 @@ func (h *Handler) validateEvent(eventID int) error {
 }
 
 func (h *Handler) validateUser(userID int) error {
-	url := fmt.Sprintf("%s/users/%d", h.gatewayBaseURL, userID)
+	url := fmt.Sprintf("%s/users/v1/%d", h.gatewayBaseURL, userID)
 	resp, err := h.httpClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to contact user service: %v", err)
