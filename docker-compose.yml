@@ -181,14 +181,14 @@ services:
       - db-network
       - gateway3-net 
 
-  payment:
-      build:
-        context: ./services/payment
-      ports:
-        - "8088:8088"
-      env_file:
-        - ./.env
-      restart: unless-stopped
+  # payment:
+  #     build:
+  #       context: ./services/payment
+  #     ports:
+  #       - "8088:8088"
+  #     env_file:
+  #       - ./.env
+  #     restart: unless-stopped
 
   auth-1:
     build:
@@ -370,6 +370,47 @@ services:
     networks:
       - db-network
       - gateway3-net
+
+  vendor-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=${DB_VENDOR_VENDOR}
+      - POSTGRES_PASSWORD=${DB_PASSWORD_VENDOR}
+      - POSTGRES_DB=${DB_NAME_VENDOR}
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"  
+    volumes:
+      - ./src/services/vendor-service/internal/db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_VENDOR_VENDOR}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - db-network
+
+  vendor-service:
+    container_name: vendor-service
+    build: 
+        context: ./src/services/vendor-service
+        dockerfile: Dockerfile
+    depends_on:
+       vendor-db:
+           condition: service_healthy
+    environment:
+      - DOCKER_COMPOSE=true
+      - DB_VENDOR_HOST=${DB_VENDOR_HOST}
+      - DB_PORT_VENDOR=${DB_PORT_VENDOR}
+      - DB_VENDOR_VENDOR=${DB_VENDOR_VENDOR}
+      - DB_PASSWORD_VENDOR=${DB_PASSWORD_VENDOR}
+      - DB_NAME_VENDOR=${DB_NAME_VENDOR}
+      - DB_SSLMODE_VENDOR=${DB_SSLMODE_VENDOR}
+    networks:
+      -  db-network
+      - gateway1-net 
+
   gateway1:
     build:
       context: .
