@@ -110,6 +110,7 @@ services:
         start_period: 10s
       networks:
         - db-network
+        - payment
 
   reservation-service-1:
     build:
@@ -130,13 +131,13 @@ services:
       - DB_NAME=${DB_NAME_RESERVATION}
       - DB_SSLMODE=${DB_SSLMODE_RESERVATION}
 
-
       - TICKET_SERVICE_URL=${TICKET_SERVICE_1}
       - USER_SERVICE_URL=${USER_SERVICE_1}
       - EVENT_SERVICE_URL=${EVENT_SERVICE_1}
     networks:
       - db-network
       - gateway1-net 
+      - payment
 
   reservation-service-2:
     build:
@@ -156,9 +157,14 @@ services:
       - DB_PASSWORD=${DB_PASSWORD_RESERVATION}
       - DB_NAME=${DB_NAME_RESERVATION}
       - DB_SSLMODE=${DB_SSLMODE_RESERVATION}
+
+      - TICKET_SERVICE_URL=${TICKET_SERVICE_2}
+      - USER_SERVICE_URL=${USER_SERVICE_2}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_2}
     networks:
       - db-network
-      - gateway2-net 
+      - gateway2-net
+      - payment
   reservation-service-3:
     build:
       context: ./src/services/reservation-service
@@ -177,18 +183,24 @@ services:
       - DB_PASSWORD=${DB_PASSWORD_RESERVATION}
       - DB_NAME=${DB_NAME_RESERVATION}
       - DB_SSLMODE=${DB_SSLMODE_RESERVATION}
+
+      - TICKET_SERVICE_URL=${TICKET_SERVICE_3}
+      - USER_SERVICE_URL=${USER_SERVICE_3}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_3}
     networks:
       - db-network
       - gateway3-net 
+      - payment
 
-  # payment:
-  #     build:
-  #       context: ./services/payment
-  #     ports:
-  #       - "8088:8088"
-  #     env_file:
-  #       - ./.env
-  #     restart: unless-stopped
+  payment:
+      container_name: payment
+      build:
+        context: ./services/payment
+      environment:
+      - SECRET_KEY = ${SECRET_KEY}
+      restart: unless-stopped
+      networks:
+      - payment
 
   auth-1:
     build:
@@ -509,5 +521,7 @@ networks:
   gateway2-net:
     driver: bridge
   gateway3-net:
+    driver: bridge
+  paymet:
     driver: bridge
 
