@@ -8,6 +8,7 @@ const verification = require('./jwt/jwt.js');
 const getRawBody = require('raw-body');
 const bodyParser = require('body-parser');
 const queryString = require('querystring');
+const { retryWithBackoff } = require('./utils/retry.js');
 
 const instance = process.env.INSTANCE_NAME;
 const targetService = process.env.TICKET_SERVICE_URL;
@@ -24,11 +25,39 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 const proxy = httpProxy.createProxyServer({ changeOrigin: true });
 
-proxy.on( 'proxyReq', ( proxyReq, req, res, options ) => {
+const retryOptions = {
+  maxRetries: 3,
+  initialDelay: 100,
+  maxDelay: 10000,
+  shouldRetry: (error) => {
+    return error.code === 'ECONNREFUSED' || 
+           error.code === 'ETIMEDOUT' || 
+           (error.statusCode && error.statusCode >= 500); // we're checking if we even have an error status code. Without it, it would sometiems fail because there is no status code to read.
+  } // this ensures we do not retry errors that are related to misinputs like 404 but server timeouts, or database errors
+};
+
+proxy.on('proxyReq', (proxyReq, req, res, options) => {
   const authHeader = req.headers['Authorization'];
   if (authHeader) {
     proxyReq.setHeader('Authorization', authHeader);
   }
+  if (req.user) {
+    try {
+      proxyReq.setHeader('email', req.user.email || '');
+      proxyReq.setHeader('username', req.user.username || req.user.name || '');
+      
+      const userData = JSON.stringify(req.user);
+    
+      if (userData.length < 8000) {
+        proxyReq.setHeader('userData', userData);
+      } else {
+        console.warn(`User data too large for header: ${userData.length} bytes`);
+      }
+    } catch (error) {
+      console.error('JWT Failed to forward user data:', error);
+    }
+  }
+  
   if ( !req.body || !Object.keys( req.body ).length ) {
     return;
   }
@@ -48,6 +77,16 @@ proxy.on( 'proxyReq', ( proxyReq, req, res, options ) => {
   }
 });
 
+proxy.on('error', (err, req, res) => {
+  console.error(`[Proxy Error] ${req.method} ${req.path}:`, err);
+  
+  if (!res.headersSent) {
+    res.status(502).json({
+      error: 'Bad Gateway',
+      message: 'The server encountered a temporary error and could not complete your request'
+    });
+  }
+});
 
 app.use('/api', concurrencyLimiter);
 app.use('/api', rateLimiter);
@@ -66,30 +105,55 @@ app.use((req, res, next) => {
   return verification(req, res, next);
 });
 
+// Create a reusable function for proxying with retry
+const proxyWithRetry = (req, res, target) => {
+  retryWithBackoff(
+    () => {
+      return new Promise((resolve, reject) => {
+        proxy.web(req, res, { target }, err => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+    },
+    retryOptions
+  ).catch(err => {
+    console.error(`[Retry Failed] ${req.method} ${req.path} to ${target}:`, err);
+    if (!res.headersSent) {
+      res.status(503).json({
+        error: 'Service Unavailable',
+        message: 'The service is currently unavailable. Please try again later'
+      });
+    }
+  });
+};
 
 app.use('/api/user', (req, res) => {
   req.url = req.url.replace(/^\/api\/user/, '');
-  proxy.web(req, res, { target: targetUserService });
+  proxyWithRetry(req, res, targetUserService);
 });
 
 app.use('/api/auth', (req, res) => {
   req.url = req.url.replace(/^\/api\/auth/, '');
-  proxy.web(req, res, { target: targetAuthService });
+  proxyWithRetry(req, res, targetAuthService);
 });
 
 app.use('/api/tickets', (req, res) => {
   req.url = req.url.replace(/^\/api\/tickets/, '');
-  proxy.web(req, res, { target: targetService });
+  proxyWithRetry(req, res, targetService);
 });
 
 app.use('/api/event', (req, res) => {
   req.url = req.url.replace(/^\/api\/event/, '');
-  proxy.web(req, res, { target: targetEventService });
+  proxyWithRetry(req, res, targetEventService);
 });
 
 app.use('/api/reserve', (req, res) => {
   req.url = req.url.replace(/^\/api\/reserve/, '');
-  proxy.web(req, res, { target: targetReserveService });
+  proxyWithRetry(req, res, targetReserveService);
 });
 
 app.get('/api/test', (req, res) => {

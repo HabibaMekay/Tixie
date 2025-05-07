@@ -110,7 +110,7 @@ services:
         start_period: 10s
       networks:
         - db-network
-        - payment
+        - payment-net
 
   reservation-service-1:
     build:
@@ -137,7 +137,7 @@ services:
     networks:
       - db-network
       - gateway1-net 
-      - payment
+      - payment-net
 
   reservation-service-2:
     build:
@@ -164,7 +164,7 @@ services:
     networks:
       - db-network
       - gateway2-net
-      - payment
+      - payment-net
   reservation-service-3:
     build:
       context: ./src/services/reservation-service
@@ -190,17 +190,17 @@ services:
     networks:
       - db-network
       - gateway3-net 
-      - payment
+      - payment-net
 
   payment:
       container_name: payment
       build:
-        context: ./services/payment
+        context: ./src/services/payment
       environment:
-      - SECRET_KEY = ${SECRET_KEY}
+      - SECRET_KEY=${SECRET_KEY}
       restart: unless-stopped
       networks:
-      - payment
+      - payment-net
 
   auth-1:
     build:
@@ -522,6 +522,6 @@ networks:
     driver: bridge
   gateway3-net:
     driver: bridge
-  paymet:
+  payment-net:
     driver: bridge
 

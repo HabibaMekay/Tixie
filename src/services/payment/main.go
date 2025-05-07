@@ -8,15 +8,10 @@ import (
 
 	"payment/routes"
 
-	"github.com/joho/godotenv"
 	"github.com/stripe/stripe-go"
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
 	stripe.Key = os.Getenv("SECRET_KEY")
 
 	r := routes.SetupRouter()

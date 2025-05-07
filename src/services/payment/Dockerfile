@@ -10,7 +10,7 @@ COPY go.mod go.sum ./
 # Download the dependencies
 RUN go mod download
 
-# Copy the entire project files into the container (including the .env file)
+# Copy the entire project files into the container
 COPY . .
 
 # Build the Go application
