@@ -7,16 +7,16 @@ import (
     amqp "github.com/rabbitmq/amqp091-go"
 )
 
-// Broker represents a RabbitMQ connection, channel, queue, and optional exchange.
+
 type Broker struct {
     conn      *amqp.Connection
     channel   *amqp.Channel
     queue     amqp.Queue
     exchange  string
-    url       string // Store URL for reconnection
+    url       string 
 }
 
-// NewBroker creates a new Broker instance connected to RabbitMQ.
+
 func NewBroker(rabbitMQURL, queueName, exchange string) (*Broker, error) {
     conn, err := amqp.Dial(rabbitMQURL)
     if err != nil {
@@ -33,13 +33,13 @@ func NewBroker(rabbitMQURL, queueName, exchange string) (*Broker, error) {
 
     if exchange != "" {
         err = ch.ExchangeDeclare(
-            exchange, // name
-            "direct", // type
-            true,     // durable
-            false,    // auto-deleted
-            false,    // internal
-            false,    // no-wait
-            nil,      // arguments
+            exchange, 
+            "direct", 
+            true,    
+            false,   
+            false,  
+            false,   
+            nil,      
         )
         if err != nil {
             log.Printf("Failed to declare exchange: %v", err)
@@ -50,12 +50,12 @@ func NewBroker(rabbitMQURL, queueName, exchange string) (*Broker, error) {
     }
 
     q, err := ch.QueueDeclare(
-        queueName, // name
-        true,      // durable
-        false,     // delete when unused
-        false,     // exclusive
-        false,     // no-wait
-        nil,       // arguments
+        queueName, 
+        true,    
+        false,   
+        false,     
+        false,     
+        nil,      
     )
     if err != nil {
         log.Printf("Failed to declare queue: %v", err)
@@ -66,11 +66,11 @@ func NewBroker(rabbitMQURL, queueName, exchange string) (*Broker, error) {
 
     if exchange != "" {
         err = ch.QueueBind(
-            queueName, // queue name
-            queueName, // routing key
-            exchange,  // exchange
-            false,     // no-wait
-            nil,       // arguments
+            queueName, 
+            queueName,
+            exchange,
+            false,    
+            nil,      
         )
         if err != nil {
             log.Printf("Failed to bind queue: %v", err)
@@ -89,7 +89,7 @@ func NewBroker(rabbitMQURL, queueName, exchange string) (*Broker, error) {
     }, nil
 }
 
-// ensureConnection checks and re-establishes the connection if needed.
+
 func (b *Broker) ensureConnection() error {
     if b.conn == nil || b.conn.IsClosed() {
         conn, err := amqp.Dial(b.url)
@@ -106,14 +106,13 @@ func (b *Broker) ensureConnection() error {
             return err
         }
 
-        // Re-declare queue
         q, err := b.channel.QueueDeclare(
-            b.queue.Name, // name
-            true,         // durable
-            false,        // delete when unused
-            false,        // exclusive
-            false,        // no-wait
-            nil,          // arguments
+            b.queue.Name, 
+            true,       
+            false,       
+            false,     
+            false,        
+            nil,         
         )
         if err != nil {
             log.Printf("Failed to re-declare queue: %v", err)
@@ -123,16 +122,16 @@ func (b *Broker) ensureConnection() error {
         }
         b.queue = q
 
-        // Re-declare exchange and binding if needed
+    
         if b.exchange != "" {
             err = b.channel.ExchangeDeclare(
-                b.exchange, // name
-                "direct",   // type
-                true,       // durable
-                false,      // auto-deleted
-                false,      // internal
-                false,      // no-wait
-                nil,        // arguments
+                b.exchange,
+                "direct",   
+                true,      
+                false,     
+                false,     
+                false,    
+                nil,       
             )
             if err != nil {
                 log.Printf("Failed to re-declare exchange: %v", err)
@@ -142,11 +141,11 @@ func (b *Broker) ensureConnection() error {
             }
 
             err = b.channel.QueueBind(
-                b.queue.Name, // queue name
-                b.queue.Name, // routing key
-                b.exchange,   // exchange
-                false,        // no-wait
-                nil,          // arguments
+                b.queue.Name,
+                b.queue.Name, 
+                b.exchange,   
+                false,        
+                nil,         
             )
             if err != nil {
                 log.Printf("Failed to re-bind queue: %v", err)
@@ -159,7 +158,7 @@ func (b *Broker) ensureConnection() error {
     return nil
 }
 
-// Publish sends a message to the queue.
+
 func (b *Broker) Publish(message interface{}) error {
     if err := b.ensureConnection(); err != nil {
         return err
@@ -172,10 +171,10 @@ func (b *Broker) Publish(message interface{}) error {
     }
 
     err = b.channel.Publish(
-        b.exchange,   // exchange
-        b.queue.Name, // routing key
-        false,        // mandatory
-        false,        // immediate
+        b.exchange,  
+        b.queue.Name, 
+        false,      
+        false,      
         amqp.Publishing{
             ContentType: "application/json",
             Body:        body,
@@ -190,20 +189,19 @@ func (b *Broker) Publish(message interface{}) error {
     return nil
 }
 
-// Consume receives messages from the queue.
 func (b *Broker) Consume() (<-chan amqp.Delivery, error) {
     if err := b.ensureConnection(); err != nil {
         return nil, err
     }
 
     msgs, err := b.channel.Consume(
-        b.queue.Name, // queue
-        "",           // consumer
-        true,         // auto-ack
-        false,        // exclusive
-        false,        // no-local
-        false,        // no-wait
-        nil,          // args
+        b.queue.Name,
+        "",           
+        true,         
+        false,        
+        false,        
+        false,       
+        nil,         
     )
     if err != nil {
         log.Printf("Failed to start consuming: %v", err)
@@ -213,7 +211,6 @@ func (b *Broker) Consume() (<-chan amqp.Delivery, error) {
     return msgs, nil
 }
 
-// Close closes the channel and connection.
 func (b *Broker) Close() error {
     if b.channel != nil {
         if err := b.channel.Close(); err != nil {

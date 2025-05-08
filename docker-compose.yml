@@ -522,6 +522,6 @@ networks:
     driver: bridge
   gateway3-net:
     driver: bridge
-  payment-net:
+  paymet:
     driver: bridge
 
