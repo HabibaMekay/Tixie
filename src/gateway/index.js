@@ -36,8 +36,8 @@ const retryOptions = {
   } // this ensures we do not retry errors that are related to misinputs like 404 but server timeouts, or database errors
 };
 
-proxy.on('proxyReq', (proxyReq, req, res, options) => {
-  const authHeader = req.headers['Authorization'];
+proxy.on( 'proxyReq', ( proxyReq, req, res, options ) => {
+  const authHeader = req.headers['authorization'];
   if (authHeader) {
     proxyReq.setHeader('Authorization', authHeader);
   }
