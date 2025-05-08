@@ -1,9 +1,8 @@
 package utils
 
 import (
-	"time"
-
 	"auth-service/config"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -21,7 +20,6 @@ func GenerateJWT(username string) (string, error) {
 			ExpiresAt: jwt.NewNumericDate(expiration),
 		},
 	}
-
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(config.JWTKey)
 }
