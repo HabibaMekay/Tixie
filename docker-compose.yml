@@ -149,6 +149,7 @@ services:
       - TICKET_SERVICE_URL=${TICKET_SERVICE_1}
       - USER_SERVICE_URL=${USER_SERVICE_1}
       - EVENT_SERVICE_URL=${EVENT_SERVICE_1}
+      - PAYMENT_SERVICE_URL=${PAYMENT_SERVICE}
     networks:
       - db-network
       - gateway1-net 

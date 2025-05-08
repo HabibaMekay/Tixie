@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"reservation-service/internal/db/models"
 	"reservation-service/internal/db/repos"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -40,23 +42,11 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 		return
 	}
 
-	//#########################################################
-	//#########################################################
-
-	// paymentSuccess, paymentErr := h.handlePayment(1000) //$$$$$$$$$ here is hardcoded until it's fixed in event
+	// paymentSuccess, paymentErr := h.handlePayment(1000) // Hardcoded until event price is fetched
 	// if !paymentSuccess {
 	// 	c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Payment error: %v", paymentErr)})
 	// 	return
 	// }
-
-	//##########################################################
-	//##########################################################
-
-	paymentSuccess, paymentErr := h.handlePayment(1000) // Hardcoded until event price is fetched
-	if !paymentSuccess {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Payment error: %v", paymentErr)})
-		return
-	}
 
 	ticketReq := struct {
 		EventID int `json:"event_id"`
@@ -117,8 +107,8 @@ func (h *Handler) handlePayment(amount int) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to marshal payload: %v", err)
 	}
-
-	req, err := http.NewRequest("POST", os.Getenv("PAYMENT_SERVICE_URL")+"/create-payment-intent", bytes.NewBuffer(body))
+	//os.Getenv("PAYMENT_SERVICE_URL")+
+	req, err := http.NewRequest("POST", "http://payment:8088/create-payment-intent", bytes.NewBuffer(body))
 	if err != nil {
 		return false, fmt.Errorf("failed to create payment request: %v", err)
 	}
@@ -156,4 +146,182 @@ func (h *Handler) handlePayment(amount int) (bool, error) {
 
 	log.Printf("Payment successful: client_secret=%s, idempotency_key=%s\n", paymentResp.ClientSecret, paymentResp.IdempotencyKey)
 	return true, nil
+}
+
+func (h *Handler) VerifyTicket(c *gin.Context) {
+	log.Println("VerifyTicket called")
+
+	// Parse multipart form
+	if err := c.Request.ParseMultipartForm(10 << 20); err != nil { // 10MB max
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse form: " + err.Error()})
+		return
+	}
+
+	var qrData string
+	// Check for file or URL
+	file, _, err := c.Request.FormFile("file")
+	if err == nil {
+		defer file.Close()
+		// Send QR code image to goqr.me
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+		part, err := writer.CreateFormFile("file", "qr.png")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create form file: " + err.Error()})
+			return
+		}
+		if _, err := io.Copy(part, file); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to copy file: " + err.Error()})
+			return
+		}
+		writer.Close()
+
+		req, err := http.NewRequest("POST", "https://api.qrserver.com/v1/read-qr-code/", body)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create QR request: " + err.Error()})
+			return
+		}
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+
+		resp, err := h.httpClient.Do(req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "QR service error: " + err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		var qrResp []struct {
+			Symbol []struct {
+				Data  string `json:"data"`
+				Error string `json:"error"`
+			} `json:"symbol"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&qrResp); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse QR response: " + err.Error()})
+			return
+		}
+		if len(qrResp) == 0 || len(qrResp[0].Symbol) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid QR code"})
+			return
+		}
+		if qrResp[0].Symbol[0].Error != "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "QR code error: " + qrResp[0].Symbol[0].Error})
+			return
+		}
+		qrData = qrResp[0].Symbol[0].Data
+	} else if url := c.Request.FormValue("url"); url != "" {
+		// Send QR code URL to goqr.me
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+		if err := writer.WriteField("file", "@url:"+url); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write URL field: " + err.Error()})
+			return
+		}
+		writer.Close()
+
+		req, err := http.NewRequest("POST", "https://api.qrserver.com/v1/read-qr-code/", body)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create QR request: " + err.Error()})
+			return
+		}
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+
+		resp, err := h.httpClient.Do(req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "QR service error: " + err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		var qrResp []struct {
+			Symbol []struct {
+				Data  string `json:"data"`
+				Error string `json:"error"`
+			} `json:"symbol"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&qrResp); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse QR response: " + err.Error()})
+			return
+		}
+		if len(qrResp) == 0 || len(qrResp[0].Symbol) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid QR code"})
+			return
+		}
+		if qrResp[0].Symbol[0].Error != "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "QR code error: " + qrResp[0].Symbol[0].Error})
+			return
+		}
+		qrData = qrResp[0].Symbol[0].Data
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing file or URL"})
+		return
+	}
+
+	// Extract ticket_code (assume format "ticket_code:<UUID>")
+	ticketCode := qrData
+	if strings.HasPrefix(qrData, "ticket_code:") {
+		ticketCode = strings.TrimPrefix(qrData, "ticket_code:")
+	}
+	if !isValidUUID(ticketCode) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket code format"})
+		return
+	}
+
+	// Query ticket service to verify ticket
+	url := fmt.Sprintf("%s/v1/verify/%s", os.Getenv("TICKET_SERVICE_URL"), ticketCode)
+	resp, err := h.httpClient.Get(url)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ticket service error: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"valid": false, "error": "Ticket not found or inactive"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Ticket service returned status %d", resp.StatusCode)})
+		return
+	}
+
+	var ticket struct {
+		TicketID int    `json:"ticket_id"`
+		EventID  int    `json:"event_id"`
+		UserID   int    `json:"user_id"`
+		Status   string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&ticket); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse ticket response: " + err.Error()})
+		return
+	}
+
+	if ticket.Status != "active" {
+		c.JSON(http.StatusNotFound, gin.H{"valid": false, "error": "Ticket is not active"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"valid":     true,
+		"ticket_id": ticket.TicketID,
+		"event_id":  ticket.EventID,
+		"user_id":   ticket.UserID,
+	})
+}
+
+// isValidUUID checks if the string is a valid UUID
+func isValidUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+		} else if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }

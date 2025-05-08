@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"ticket-service/internal/db/models"
@@ -84,10 +83,10 @@ func (h *Handler) CreateTicket(c *gin.Context) {
 		return
 	}
 
-	// if err := h.validateEvent(input.EventID); err != nil {
-	// 	c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid event_id: %v", err)})
-	// 	return
-	// }
+	if err := h.validateEvent(input.EventID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid event_id: %v", err)})
+		return
+	}
 
 	if err := h.validateUser(input.UserID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid user_id: %v", err)})
@@ -156,8 +155,51 @@ func (h *Handler) UpdateTicketStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, updatedTicket)
 }
 
+// func (h *Handler) GetTicketByCode(c *gin.Context) {
+// 	log.Println("GetTicketByCode called")
+// 	ticketCode := c.Param("ticket_code")
+
+// 	ticket, err := h.repo.GetTicketByCode(ticketCode)
+// 	if err != nil {
+// 		c.JSON(http.StatusNotFound, gin.H{"error": "Ticket not found"})
+// 		return
+// 	}
+
+//		c.JSON(http.StatusOK, gin.H{
+//			"ticket_id": ticket.TicketID,
+//			"event_id":  ticket.EventID,
+//			"user_id":   ticket.UserID,
+//			"status":    ticket.Status,
+//		})
+//	}
+func (h *Handler) GetTicketByCode(c *gin.Context) {
+	log.Println("GetTicketByCode called")
+	ticketCode := c.Param("ticket_code")
+	log.Printf("Raw ticketCode: %q", ticketCode) // Debug the raw ticketCode
+
+	// Normalize ticketCode: trim whitespace and convert to lowercase
+	ticketCode = strings.TrimSpace(strings.ToLower(ticketCode))
+
+	log.Printf("Normalized ticketCode: %s", ticketCode)
+
+	ticket, err := h.repo.GetTicketByCode(ticketCode)
+	if err != nil {
+		log.Printf("Database error for ticketCode %s: %v", ticketCode, err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Tiiiicket not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ticket_id": ticket.TicketID,
+		"event_id":  ticket.EventID,
+		"user_id":   ticket.UserID,
+		"status":    ticket.Status,
+	})
+}
+
 func (h *Handler) validateEvent(eventID int) error {
-	url := fmt.Sprintf("%s/v1/%d", os.Getenv("EVENT_SERVICE_URL"), eventID)
+	//url := fmt.Sprintf("%s/v1/%d", os.Getenv("EVENT_SERVICE_1"), eventID)
+	url := fmt.Sprintf("http://event-service-1:8080/v1/%d", eventID)
 	resp, err := h.httpClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to contact event service: %v", err)
@@ -172,7 +214,8 @@ func (h *Handler) validateEvent(eventID int) error {
 }
 
 func (h *Handler) validateUser(userID int) error {
-	url := fmt.Sprintf("%s/v1/%d", os.Getenv("USER_SERVICE_URL"), userID)
+	//url := fmt.Sprintf("%s/v1/%d", os.Getenv("USER_SERVICE_1"), userID)
+	url := fmt.Sprintf("http://user-service-1:8081/v1/%d", userID)
 	resp, err := h.httpClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to contact user service: %v", err)

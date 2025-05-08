@@ -21,5 +21,7 @@ func SetupRoutes(r *gin.Engine, repo *repos.TicketRepository) {
 		tickets.POST("", handler.CreateTicket)
 
 		tickets.PUT("/:id/status", handler.UpdateTicketStatus)
+
+		tickets.GET("/verify/:ticket_code", handler.GetTicketByCode)
 	}
 }
