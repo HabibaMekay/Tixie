@@ -195,7 +195,7 @@ services:
   payment:
       container_name: payment
       build:
-        context: ./services/payment
+        context: ./src/services/payment
       environment:
       - SECRET_KEY = ${SECRET_KEY}
       restart: unless-stopped
@@ -522,6 +522,6 @@ networks:
     driver: bridge
   gateway3-net:
     driver: bridge
-  paymet:
+  payment:
     driver: bridge
 
