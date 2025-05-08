@@ -12,5 +12,6 @@ func SetupRoutes(r *gin.Engine, purchaseRepo *repos.PurchaseRepository) {
 	{
 		res.POST("", handler.ReserveTicket)
 		//res.GET("/:id", handler.GetTicket)
+		res.POST("/verify", handler.VerifyTicket)
 	}
 }

@@ -3,6 +3,7 @@ package repos
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"ticket-service/internal/db/models"
 
@@ -72,4 +73,21 @@ func (r *TicketRepository) UpdateTicketStatus(ticketID int, status string) (*mod
 		return nil, err
 	}
 	return &updatedTicket, nil
+}
+
+func (r *TicketRepository) GetTicketByCode(ticketCode string) (*models.Ticket, error) {
+	ticket := &models.Ticket{}
+	query := `SELECT ticket_id, event_id, user_id, ticket_code, status FROM ticket WHERE ticket_code = CAST($1 AS UUID)`
+	err := r.db.QueryRow(query, ticketCode).Scan(
+		&ticket.TicketID, &ticket.EventID, &ticket.UserID, &ticket.TicketCode, &ticket.Status,
+	)
+	if err == sql.ErrNoRows {
+		log.Printf("No ticket found for ticket_code: %s", ticketCode)
+		return nil, fmt.Errorf("ticket not found")
+	}
+	if err != nil {
+		log.Printf("Database error for ticket_code %s: %v", ticketCode, err)
+		return nil, err
+	}
+	return ticket, nil
 }
