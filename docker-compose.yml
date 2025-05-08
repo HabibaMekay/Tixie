@@ -6,6 +6,23 @@ services:
     networks:
       - app-network
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "15672:15672"
+    networks:
+      - message-net
+      - app-network
+
   ticket-db:
     image: postgres:latest
     environment:
@@ -42,14 +59,12 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
       - DB_SSLMODE=${DB_SSLMODE}
-
-
       - USER_SERVICE_URL=${USER_SERVICE_1}
       - EVENT_SERVICE_URL=${EVENT_SERVICE_1}
-
     networks:
       - db-network
-      - gateway1-net 
+      - gateway1-net
+      - message-net
   
 
   ticket-service-2:
@@ -71,7 +86,7 @@ services:
     networks:
       - db-network
       - gateway2-net
-
+      - message-net
   ticket-service-3:
     build:
       context: ./src/services/ticket-service
@@ -91,7 +106,7 @@ services:
     networks:
       - db-network
       - gateway3-net
-
+      - message-net
   reservation-db:
       image: postgres:latest
       environment:
@@ -138,7 +153,7 @@ services:
       - db-network
       - gateway1-net 
       - payment-net
-
+      - message-net
   reservation-service-2:
     build:
       context: ./src/services/reservation-service
@@ -165,6 +180,7 @@ services:
       - db-network
       - gateway2-net
       - payment-net
+      - message-net
   reservation-service-3:
     build:
       context: ./src/services/reservation-service
@@ -191,16 +207,40 @@ services:
       - db-network
       - gateway3-net 
       - payment-net
-
+      - message-net
   payment:
       container_name: payment
       build:
-        context: ./src/services/payment
+        context: ./src/services
+        dockerfile: payment/Dockerfile
       environment:
       - SECRET_KEY=${SECRET_KEY}
+      - RABBITMQ_URL=${RABBITMQ_URL}
       restart: unless-stopped
+      ports:
+        - "2512:8088"
       networks:
       - payment-net
+      - message-net
+  
+  notification-service:
+    container_name: notification-service
+    build:
+        context: ./src/services
+        dockerfile: notification-service/Dockerfile
+    environment:
+      - MAILERSEND_API_KEY=${MAILERSEND_KEY}
+      - MAILERSEND_TEMPLATE_ID=${MAILERSEND_TID}
+      - MAILERSEND_EMAIL=${MAILERSEND_EMAIL}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+    depends_on:
+      - rabbitmq
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - message-net
 
   auth-1:
     build:
@@ -217,6 +257,7 @@ services:
     networks:
       - db-network
       - gateway1-net
+      - message-net
   auth-2:
     build:
       context: ./src/services/auth
@@ -230,6 +271,7 @@ services:
     networks:
       - db-network
       - gateway2-net
+      - message-net
   auth-3:
     build:
       context: ./src/services/auth
@@ -241,7 +283,7 @@ services:
     networks:
       - db-network
       - gateway3-net
-    
+      - message-net
   db-user:
     image: postgres:15
     environment:
@@ -278,7 +320,7 @@ services:
     networks:
       - db-network
       - gateway1-net
-  
+      - message-net  
   user-service-2:
     build: 
       context: ./src/services/user-service
@@ -305,6 +347,7 @@ services:
     networks:
       - db-network
       - gateway3-net
+      - message-net
   event-db:
     container_name: event-db
     image: postgres:15
@@ -341,7 +384,7 @@ services:
     networks:
       - db-network
       - gateway1-net
-  
+      - message-net  
 
   event-service-2:
     container_name: event-service-2
@@ -362,7 +405,7 @@ services:
     networks:
       - db-network
       - gateway2-net
-
+      - message-net
   event-service-3:
     container_name: event-service-3
     build: 
@@ -382,7 +425,7 @@ services:
     networks:
       - db-network
       - gateway3-net
-
+      - message-net
   vendor-db:
     image: postgres:15
     environment:
@@ -422,7 +465,7 @@ services:
     networks:
       -  db-network
       - gateway1-net 
-
+      - message-net
   gateway1:
     build:
       context: .
@@ -522,6 +565,8 @@ networks:
     driver: bridge
   gateway3-net:
     driver: bridge
-  paymet:
+  payment-net:
+    driver: bridge
+  message-net:
     driver: bridge
 

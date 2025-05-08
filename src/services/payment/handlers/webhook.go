@@ -7,7 +7,13 @@ import (
 	"os"
 
 	"github.com/stripe/stripe-go/webhook"
+	brokerPkg "tixie.local/broker"
 )
+
+type EmailMessage struct {
+	RecipientEmail string `json:"recipient_email"`
+	TicketID       string `json:"ticket_id"`
+}
 
 func StripeWebhook(w http.ResponseWriter, r *http.Request) {
 	const MaxBodyBytes = int64(65536)
@@ -38,5 +44,21 @@ func StripeWebhook(w http.ResponseWriter, r *http.Request) {
 
 func SimulateWebhook(w http.ResponseWriter, r *http.Request) {
 	log.Println("simulated PaymentIntent succeeded")
+
+	b, err := brokerPkg.NewBroker(os.Getenv("RABBITMQ_URL"), "notification", "topic")
+	if err != nil {
+		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
+	}
+	defer b.Close()
+	msg := EmailMessage{
+		RecipientEmail: "leaguedo@gmail.com",
+		TicketID:       "abc-123-ticket",
+	}
+	err = b.Publish(msg, "email")
+	if err != nil {
+		log.Fatalf("Failed to publish email notification: %v", err)
+	}
+
+	log.Println("Published email notification to notification-service successfully.")
 	w.WriteHeader(http.StatusOK)
 }

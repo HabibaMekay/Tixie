@@ -1,23 +1,26 @@
-# Use Go 1.23 base image
-FROM golang:1.23
+# Build stage
+FROM golang:1.23-alpine AS build
 
-# Set the current working directory in the container
-WORKDIR /app
+WORKDIR /src/payment
 
-# Copy go.mod and go.sum files to the container
-COPY go.mod go.sum ./
+# Copy only what's needed for dependency resolution
+COPY payment/go.mod payment/go.sum ./
+COPY broker /src/broker
 
-# Download the dependencies
+# Let Go resolve and cache dependencies
 RUN go mod download
 
-# Copy the entire project files into the container
-COPY . .
+# Copy the rest of the source code (only payment service code)
+COPY payment/. .
 
-# Build the Go application
-RUN go build -o payment-service .
+# Build the application
+RUN go build -o payment-service ./cmd/main.go
 
-# Expose the port that your Go application will run on
+# Final stage: minimal image
+FROM alpine:latest
+
+WORKDIR /app
+COPY --from=build /src/payment/payment-service .
+
 EXPOSE 8088
-
-# Command to run the application
 CMD ["./payment-service"]
