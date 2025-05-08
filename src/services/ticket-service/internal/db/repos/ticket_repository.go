@@ -20,6 +20,12 @@ func NewTicketRepository(db *sqlx.DB) *TicketRepository {
 	return &TicketRepository{db: db}
 }
 
+// EventWithTickets represents an event that has tickets
+type EventWithTickets struct {
+	EventID     int `json:"event_id" db:"event_id"`
+	TicketCount int `json:"ticket_count" db:"ticket_count"`
+}
+
 // GetTicketByID retrieves a ticket by its ID.
 func (r *TicketRepository) GetTicketByID(ticketID int) (*models.Ticket, error) {
 	var ticket models.Ticket
@@ -90,4 +96,21 @@ func (r *TicketRepository) GetTicketByCode(ticketCode string) (*models.Ticket, e
 		return nil, err
 	}
 	return ticket, nil
+}
+
+// GetEventsWithTickets retrieves all events that have at least one ticket
+func (r *TicketRepository) GetEventsWithTickets() ([]EventWithTickets, error) {
+	var events []EventWithTickets
+	query := `
+		SELECT event_id, COUNT(*) as ticket_count 
+		FROM ticket 
+		GROUP BY event_id 
+		HAVING COUNT(*) > 0
+		ORDER BY event_id`
+
+	err := r.db.Select(&events, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get events with tickets: %v", err)
+	}
+	return events, nil
 }

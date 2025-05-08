@@ -13,6 +13,11 @@ func SetupRoutes(r *gin.Engine, repo *repos.TicketRepository) {
 	// API routes for tickets
 	tickets := r.Group("/v1")
 	{
+		tickets.GET("/ws/events-with-tickets", handler.GetEventsWithTicketsWS)
+
+		tickets.GET("/ws/tickets/:event_id", handler.GetTicketsByEventIDWS)
+
+		tickets.GET("/events-with-tickets", handler.GetEventsWithTickets)
 
 		tickets.GET("/:id", handler.GetTicketByID)
 

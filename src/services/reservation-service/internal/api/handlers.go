@@ -15,19 +15,27 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	brokerPkg "tixie.local/broker"
 )
 
 type Handler struct {
 	repo       *repos.PurchaseRepository
 	httpClient *http.Client
+	broker     *brokerPkg.Broker
 }
 
 func NewHandler(repo *repos.PurchaseRepository) *Handler {
+	broker, err := brokerPkg.NewBroker(os.Getenv("RABBITMQ_URL"), "payment", "topic")
+	if err != nil {
+		log.Printf("Warning: Failed to create broker: %v", err)
+	}
+
 	return &Handler{
 		repo: repo,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
+		broker: broker,
 	}
 }
 
@@ -42,11 +50,37 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 		return
 	}
 
-	// paymentSuccess, paymentErr := h.handlePayment(1000) // Hardcoded until event price is fetched
-	// if !paymentSuccess {
-	// 	c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Payment error: %v", paymentErr)})
-	// 	return
-	// }
+	// Fetch event details to get price so we can log it as if we're actually logging it
+	eventResp, err := h.httpClient.Get(fmt.Sprintf("%s/v1/%d", os.Getenv("EVENT_SERVICE_URL"), input.EventID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to fetch event details: %v", err)})
+		return
+	}
+	defer eventResp.Body.Close()
+
+	var eventDetails struct {
+		Price float64 `json:"price"`
+	}
+	if err := json.NewDecoder(eventResp.Body).Decode(&eventDetails); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse event response"})
+		return
+	}
+
+	// Fetching user details to get email to send the QR code to at the end
+	userResp, err := h.httpClient.Get(fmt.Sprintf("%s/v1/%d", os.Getenv("USER_SERVICE_URL"), input.UserID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to fetch user details: %v", err)})
+		return
+	}
+	defer userResp.Body.Close()
+
+	var userDetails struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(userResp.Body).Decode(&userDetails); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse user response"})
+		return
+	}
 
 	ticketReq := struct {
 		EventID int `json:"event_id"`
@@ -69,7 +103,9 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 	}
 
 	var ticketResp struct {
-		TicketID int `json:"ticket_id"`
+		TicketID   int    `json:"ticket_id"`
+		UserID     int    `json:"user_id"`
+		TicketCode string `json:"ticket_code"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&ticketResp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse ticket response"})
@@ -88,6 +124,35 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
 		return
+	}
+
+	// Publish payment message
+	if h.broker != nil {
+		paymentMsg := struct {
+			TicketID int `json:"ticket_id"`
+			Amount   int `json:"amount"`
+		}{
+			TicketID: ticketResp.TicketID,
+			Amount:   1000, // This should be fetched from the event service, for now this is fine
+		}
+		if err := h.broker.Publish(paymentMsg, "topay"); err != nil {
+			log.Printf("Warning: Failed to publish payment message: %v", err)
+		} else {
+			log.Printf("Published payment message for ticket %d", ticketResp.TicketID)
+		}
+
+		notificationMsg := struct {
+			RecipientEmail string `json:"recipient_email"`
+			TicketID       string `json:"ticket_id"`
+		}{
+			RecipientEmail: "user@example.com",
+			TicketID:       ticketResp.TicketCode,
+		}
+		if err := h.broker.Publish(notificationMsg, "email"); err != nil {
+			log.Printf("Warning: Failed to publish notification message: %v", err)
+		} else {
+			log.Printf("Published notification message for ticket %s", ticketResp.TicketCode)
+		}
 	}
 
 	c.JSON(http.StatusCreated, createdPurchase)

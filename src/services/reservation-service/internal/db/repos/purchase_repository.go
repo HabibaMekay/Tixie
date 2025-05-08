@@ -41,3 +41,13 @@ func (r *PurchaseRepository) UpdatePurchaseStatus(purchaseID int, status string)
 	}
 	return &updatedPurchase, nil
 }
+
+// GetPurchaseByTicketID retrieves a purchase record by ticket ID
+func (r *PurchaseRepository) GetPurchaseByTicketID(ticketID int) (*models.Purchase, error) {
+	var purchase models.Purchase
+	err := r.db.Get(&purchase, "SELECT * FROM purchases WHERE ticket_id = $1", ticketID)
+	if err != nil {
+		return nil, err
+	}
+	return &purchase, nil
+}

@@ -9,6 +9,34 @@ const getRawBody = require('raw-body');
 const bodyParser = require('body-parser');
 const queryString = require('querystring');
 const { retryWithBackoff } = require('./utils/retry.js');
+const http = require('http');
+
+// Protected vendor routes that require vendor role
+const vendorProtectedRoutes = [
+  { path: '/api/event/v1', methods: ['POST'] }
+];
+
+// Middleware to check if user is a vendor
+const isVendor = (req, res, next) => {
+  // First check if the route needs vendor protection
+  const needsVendorAccess = vendorProtectedRoutes.some(route => 
+    req.path.startsWith(route.path) && route.methods.includes(req.method)
+  );
+
+  if (!needsVendorAccess) {
+    return next();
+  }
+
+  // If route needs protection, check user role from JWT data
+  if (!req.user || !req.user.role || req.user.role !== 'vendor') {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'This route is only accessible to vendors'
+    });
+  }
+
+  next();
+};
 
 const instance = process.env.INSTANCE_NAME;
 const targetService = process.env.TICKET_SERVICE_URL;
@@ -18,12 +46,20 @@ const targetEventService = process.env.EVENT_SERVICE_URL;
 const targetReserveService = process.env.RESERVE_SERVICE_URL;
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 8083;
 app.set('trust proxy', true);
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 const proxy = httpProxy.createProxyServer({ changeOrigin: true });
+
+// Create WebSocket proxy
+const wsProxy = httpProxy.createProxyServer({
+  target: targetService,
+  ws: true,
+  changeOrigin: true
+});
 
 const retryOptions = {
   maxRetries: 3,
@@ -39,7 +75,7 @@ const retryOptions = {
 proxy.on( 'proxyReq', ( proxyReq, req, res, options ) => {
   const authHeader = req.headers['authorization'];
   if (authHeader) {
-    proxyReq.setHeader('Authorization', authHeader);
+    proxyReq.setHeader('authorization', authHeader);
   }
   if (req.user) {
     try {
@@ -88,6 +124,42 @@ proxy.on('error', (err, req, res) => {
   }
 });
 
+// Handle WebSocket upgrade
+server.on('upgrade', (req, socket, head) => {
+  const path = req.url;
+  
+  // Check if this is a WebSocket request for tickets service
+  if (path.startsWith('/api/tickets/v1/ws/')) {
+    // Verify JWT for WebSocket connections
+    const token = req.headers['authorization'];
+    if (!token) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    verification.verifyToken(token.replace('Bearer ', ''))
+      .then(decoded => {
+        // Modify the URL to match the internal service path
+        req.url = req.url.replace(/^\/api\/tickets/, '');
+        wsProxy.ws(req, socket, head);
+      })
+      .catch(err => {
+        console.error('WebSocket authentication failed:', err);
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+      });
+  }
+});
+
+// Handle proxy errors
+wsProxy.on('error', (err, req, socket) => {
+  console.error('WebSocket proxy error:', err);
+  if (socket.writable) {
+    socket.write('HTTP/1.1 502 Bad Gateway\r\n\r\n');
+  }
+});
+
 app.use('/api', concurrencyLimiter);
 app.use('/api', rateLimiter);
 
@@ -104,6 +176,9 @@ app.use((req, res, next) => {
   if (isOpen) return next();
   return verification(req, res, next);
 });
+
+// Add vendor check after JWT verification
+app.use(isVendor);
 
 // Create a reusable function for proxying with retry
 const proxyWithRetry = (req, res, target) => {
@@ -173,7 +248,7 @@ app.get('/debug/redis-keys', async (req, res) => {
   }
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`API Gateway running on port ${PORT}`);
+// Start server using the HTTP server instead of app.listen
+server.listen(PORT, () => {
+  console.log(`API Gateway running on port ${PORT} with WebSocket support`);
 });
