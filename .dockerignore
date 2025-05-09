@@ -9,3 +9,6 @@ vendor/
 *.tmp
 node_modules/
 .git
+Test-UserService.ps1
+Test-EventService.ps1
+Test-VendorService.ps1
