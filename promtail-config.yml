@@ -8,6 +8,24 @@ positions:
 clients:
   - url: http://loki:3100/loki/api/v1/push
 
+# scrape_configs:
+#   - job_name: services
+#     static_configs:
+#       - targets: ['localhost']
+#         labels:
+#           job: services
+#           __path__: /app/*/logs/*.log
+#     relabel_configs:
+#       - source_labels: [__path__]
+#         regex: /app/([^/]+)/logs/.*\.log
+#         target_label: service
+#         replacement: $1
+#     pipeline_stages:
+#       - json:
+#           expressions:
+#             level: level
+#             msg: message
+
 scrape_configs:
   - job_name: auth-service
     static_configs:
@@ -15,7 +33,7 @@ scrape_configs:
         labels:
           job: auth-service
           service: auth
-          __path__: /software-arch/src/services/auth/logs/*.log
+          __path__: /app/auth/logs/service.log
     pipeline_stages:
       - json:
           expressions:
@@ -28,7 +46,7 @@ scrape_configs:
         labels:
           job: event-service
           service: event
-          __path__: /software-arch/src/services/event-service/logs/*.log
+          __path__: /app/event-service/logs/*.log
     pipeline_stages:
       - json:
           expressions:
@@ -41,7 +59,7 @@ scrape_configs:
         labels:
           job: payment-service
           service: payment
-          __path__: /app/logs/*.log
+          __path__: /app/payment/logs/*.log
     pipeline_stages:
       - json:
           expressions:
@@ -54,7 +72,7 @@ scrape_configs:
         labels:
           job: reservation-service
           service: reservation
-          __path__: /software-arch/src/services/reservation-service/logs/*.log
+          __path__: /app/reservation-service/logs/*.log
     pipeline_stages:
       - json:
           expressions:
@@ -67,7 +85,7 @@ scrape_configs:
         labels:
           job: ticket-service
           service: ticket
-          __path__: /software-arch/src/services/ticket-service/logs/*.log
+          __path__: /app/ticket-service/logs/*.log
     pipeline_stages:
       - json:
           expressions:
@@ -80,7 +98,7 @@ scrape_configs:
         labels:
           job: user-service
           service: user
-          __path__: /software-arch/src/services/user-service/logs/*.log
+          __path__: /app/user-service/logs/*.log
     pipeline_stages:
       - json:
           expressions:

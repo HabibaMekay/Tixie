@@ -17,7 +17,7 @@ func init() {
 	if _, err := os.Stat("logs"); os.IsNotExist(err) {
 		os.MkdirAll("logs", os.ModePerm)
 	}
-	logFile, err := os.OpenFile("logs/service.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	logFile, err := os.OpenFile("../logs", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatalf("failed to open log file: %v", err)
 	}

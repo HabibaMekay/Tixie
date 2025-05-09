@@ -514,8 +514,15 @@ services:
   promtail:
     image: grafana/promtail:2.9.0
     volumes:
+      - ./src/services/payment/logs:/app/logs
+      - ./src/services/auth/logs:/app/logs
+      - ./src/services/event-service/logs:/app/logs
+      - ./src/services/reservation-service/logs:/app/logs
+      - ./src/services/ticker-service/logs:/app/logs
+      - ./src/services/user-service/logs:/app/logs
       - ./promtail-config.yml:/etc/promtail/promtail-config.yml
       - ./logs:/var/log
+      - ./positions:/positions
     command: -config.file=/etc/promtail/promtail-config.yml
     depends_on:
       - loki
