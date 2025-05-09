@@ -15,13 +15,13 @@ import (
 
 func Test_WrongStripeKey(t *testing.T) {
 	os.Setenv("STRIPE_SECRET_KEY", "sk_test_invalid")
-
+	paymentHandler := NewPaymentHandler()
 	body := []byte(`{"amount": 1000}`)
 	req := httptest.NewRequest("POST", "/create-payment-intent", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 
-	CreatePaymentIntent(rr, req)
+	paymentHandler.CreatePaymentIntent(rr, req)
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("Expected 500 for Stripe failure, got %d", rr.Code)
@@ -32,8 +32,8 @@ func Test_InvalidJSON(t *testing.T) {
 	req := httptest.NewRequest("POST", "/create-payment-intent", bytes.NewBuffer([]byte(`invalid`)))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-
-	CreatePaymentIntent(rr, req)
+	paymentHandler := NewPaymentHandler()
+	paymentHandler.CreatePaymentIntent(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("Expected 400 for invalid JSON, got %d", rr.Code)
@@ -45,7 +45,8 @@ func Test_MissingAmount(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 
-	CreatePaymentIntent(rr, req)
+	paymentHandler := NewPaymentHandler()
+	paymentHandler.CreatePaymentIntent(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("Expected 400 for missing amount, got %d", rr.Code)
@@ -58,7 +59,8 @@ func Test_InvalidAmount1(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 
-	CreatePaymentIntent(rr, req)
+	paymentHandler := NewPaymentHandler()
+	paymentHandler.CreatePaymentIntent(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("Expected 400 for negative amount, got %d", rr.Code)
@@ -71,7 +73,8 @@ func Test_InvalidAmount2(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 
-	CreatePaymentIntent(rr, req)
+	paymentHandler := NewPaymentHandler()
+	paymentHandler.CreatePaymentIntent(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("Expected 400 for zero amount, got %d", rr.Code)
@@ -83,7 +86,8 @@ func TestSimulateWebhook(t *testing.T) {
 	req := httptest.NewRequest("POST", "/simulate-webhook", nil)
 	rr := httptest.NewRecorder()
 
-	SimulateWebhook(rr, req)
+	WebhookHandler := NewWebhookHandler()
+	WebhookHandler.SimulateWebhook(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("Expected 200 from simulate-webhook, got %d", rr.Code)
@@ -106,7 +110,8 @@ func TestCreatePaymentIntent_SuccessSimulated(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	CreatePaymentIntent(rr, req)
+	paymentHandler := NewPaymentHandler()
+	paymentHandler.CreatePaymentIntent(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("Expected 200 for successful payment intent, got %d", rr.Code)
