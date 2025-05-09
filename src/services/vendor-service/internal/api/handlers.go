@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -19,13 +18,13 @@ import (
 
 type Handler struct {
 	repo                *repos.VendorRepository
-	eventServiceBreaker *circuitbreaker.CircuitBreaker
+	eventServiceBreaker *circuitbreaker.Breaker
 }
 
 func NewHandler(repo *repos.VendorRepository) *Handler {
 	return &Handler{
 		repo:                repo,
-		eventServiceBreaker: circuitbreaker.NewCircuitBreaker(circuitbreaker.DefaultSettings("event-service-client")),
+		eventServiceBreaker: circuitbreaker.NewBreaker("event-service-client"),
 	}
 }
 
@@ -183,28 +182,29 @@ func (h *Handler) CreateVendorEvent(c *gin.Context) {
 	}
 
 	var resp *http.Response
-	err = h.eventServiceBreaker.Execute(func() error {
+	result := h.eventServiceBreaker.Execute(func() (interface{}, error) {
 		var err error
 		resp, err = http.Post("http://event-service:8080/v1", "application/json", bytes.NewBuffer(jsonData))
 		if err != nil {
-			return err
+			return nil, err
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusCreated {
-			return fmt.Errorf("event service returned status: %d", resp.StatusCode)
+			return nil, fmt.Errorf("event service returned status: %d", resp.StatusCode)
 		}
 
-		return nil
+		return resp, nil
 	})
 
-	if err != nil {
-		if errors.Is(err, circuitbreaker.ErrCircuitBreakerOpen) || errors.Is(err, circuitbreaker.ErrTooManyRequests) {
-			log.Printf("Circuit breaker error when calling event service: %v", err)
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Event service is temporarily unavailable"})
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			log.Printf("Circuit breaker error when calling event service: %v", result.Error)
+			c.JSON(status, gin.H{"error": msg})
 			return
 		}
-		log.Printf("Error calling event service: %v", err)
+		log.Printf("Error calling event service: %v", result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create event"})
 		return
 	}
