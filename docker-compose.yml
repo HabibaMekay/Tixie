@@ -65,6 +65,8 @@ services:
       - db-network
       - gateway1-net
       - message-net
+    volumes:
+      - ./src/services/ticket-service/logs:/app/logs
   
 
   ticket-service-2:
@@ -87,6 +89,9 @@ services:
       - db-network
       - gateway2-net
       - message-net
+    volumes:
+      - ./src/services/ticket-service/logs:/app/logs
+
   ticket-service-3:
     build:
       context: ./src/services
@@ -107,6 +112,9 @@ services:
       - db-network
       - gateway3-net
       - message-net
+    volumes:
+      - ./src/services/ticket-service/logs:/app/logs
+
   reservation-db:
       image: postgres:latest
       environment:
@@ -155,6 +163,9 @@ services:
       - gateway1-net 
       - payment-net
       - message-net
+    volumes:
+      - ./src/services/reservation-service/logs:/app/logs
+
   reservation-service-2:
     build:
       context: ./src/services
@@ -182,6 +193,8 @@ services:
       - gateway2-net
       - payment-net
       - message-net
+    volumes:
+      - ./src/services/reservation-service/logs:/app/logs
   reservation-service-3:
     build:
       context: ./src/services
@@ -223,7 +236,8 @@ services:
       networks:
       - payment-net
       - message-net
-  
+      volumes:
+        - ./src/services/payment/logs/service.log:/app/logs/service.log
   notification-service:
     container_name: notification-service
     build:
@@ -243,6 +257,9 @@ services:
       retries: 5
     networks:
       - message-net
+    volumes:
+      - ./src/services/reservation-service/logs:/app/logs
+
 
   auth-1:
     build:
@@ -262,6 +279,9 @@ services:
       - db-network
       - gateway1-net
       - message-net
+    volumes:
+      - ./src/services/auth/logs/service.log:/app/logs/service.log
+  
   auth-2:
     build:
       context: ./src/services/auth
@@ -278,6 +298,9 @@ services:
       - db-network
       - gateway2-net
       - message-net
+    volumes:
+      - ./src/services/auth/logs/service.log:/app/logs/service.log
+
   auth-3:
     build:
       context: ./src/services/auth
@@ -291,6 +314,9 @@ services:
       - db-network
       - gateway3-net
       - message-net
+    volumes:
+      - ./src/services/auth/logs/service.log:/app/logs/service.log
+
   db-user:
     image: postgres:15
     environment:
@@ -328,6 +354,9 @@ services:
       - db-network
       - gateway1-net
       - message-net  
+    volumes:
+      - ./src/services/user-service/logs/service.log:/app/logs/service.log
+  
   user-service-2:
     build: 
       context: ./src/services
@@ -341,6 +370,9 @@ services:
     networks:
       - db-network
       - gateway2-net
+    volumes:
+      - ./src/services/user-service/logs/service.log:/app/logs/service.log
+
   user-service-3:
     build: 
       context: ./src/services
@@ -355,6 +387,9 @@ services:
       - db-network
       - gateway3-net
       - message-net
+    volumes:
+      - ./src/services/user-service/logs/service.log:/app/logs/service.log
+
   event-db:
     container_name: event-db
     image: postgres:15
@@ -392,6 +427,9 @@ services:
       - db-network
       - gateway1-net
       - message-net  
+    volumes:
+      - ./src/services/event-service/logs/service.log:/app/logs/service.log
+  
 
   event-service-2:
     container_name: event-service-2
@@ -413,6 +451,9 @@ services:
       - db-network
       - gateway2-net
       - message-net
+    volumes:
+      - ./src/services/event-service/logs/service.log:/app/logs/service.log
+
   event-service-3:
     container_name: event-service-3
     build: 
@@ -473,6 +514,9 @@ services:
       -  db-network
       - gateway1-net 
       - message-net
+    volumes:
+      - ./src/services/event-service/logs/service.log:/app/logs/service.log
+
   gateway1:
     build:
       context: .
@@ -558,9 +602,59 @@ services:
     networks:
       - app-network
 
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+
+  loki:
+    image: grafana/loki:2.9.0
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yaml:/etc/loki/loki-config.yaml
+      - loki-data:/loki
+    command: -config.file=/etc/loki/loki-config.yaml
+
+
+  promtail:
+    image: grafana/promtail:2.9.0
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/promtail-config.yml
+      - ./logs:/var/log
+    command: -config.file=/etc/promtail/promtail-config.yml
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+      - loki
+
 volumes:
   db-data:
   db-data-reservation:
+  grafana-data:
+  loki-data:
+  prometheus-data:
+
 networks:
   app-network:
     driver: bridge

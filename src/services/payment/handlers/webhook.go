@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 
@@ -25,7 +24,7 @@ type EmailMessage struct {
 func NewWebhookHandler() *WebhookHandler {
 	broker, err := brokerPkg.NewBroker(os.Getenv("RABBITMQ_URL"), "notification", "topic")
 	if err != nil {
-		log.Printf("Warning: Failed to create broker: %v", err)
+		logger.Printf("Warning: Failed to create broker: %v", err)
 	}
 
 	return &WebhookHandler{
@@ -54,19 +53,21 @@ func (h *WebhookHandler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if event.Type == "payment_intent.succeeded" {
-			log.Printf("PaymentIntent %s succeeded", event.ID)
+			logger.Printf("PaymentIntent %s succeeded", event.ID)
 		}
 
 		return event, nil
 	})
 
 	if result.Error != nil {
+		logger.Printf("Webhook error: %v", result.Error)
+
 		if circuitbreaker.IsCircuitBreakerError(result.Error) {
 			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
 			http.Error(w, msg, status)
 			return
 		}
-		log.Printf("Webhook error: %v", result.Error)
+
 		http.Error(w, result.Error.Error(), http.StatusBadRequest)
 		return
 	}
@@ -75,7 +76,7 @@ func (h *WebhookHandler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WebhookHandler) SimulateWebhook(w http.ResponseWriter, r *http.Request) {
-	log.Println("simulated PaymentIntent succeeded")
+	logger.Println("Simulated PaymentIntent succeeded")
 
 	if h.broker == nil {
 		http.Error(w, "Message broker not available", http.StatusServiceUnavailable)
@@ -94,16 +95,18 @@ func (h *WebhookHandler) SimulateWebhook(w http.ResponseWriter, r *http.Request)
 	})
 
 	if result.Error != nil {
+		logger.Printf("Failed to publish notification: %v", result.Error)
+
 		if circuitbreaker.IsCircuitBreakerError(result.Error) {
 			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
 			http.Error(w, msg, status)
 			return
 		}
-		log.Printf("Failed to publish notification: %v", result.Error)
+
 		http.Error(w, result.Error.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	log.Println("Published email notification to notification-service successfully.")
+	logger.Println("Published email notification to notification-service successfully.")
 	w.WriteHeader(http.StatusOK)
 }
