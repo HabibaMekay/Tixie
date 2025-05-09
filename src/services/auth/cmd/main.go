@@ -16,7 +16,7 @@ import (
 func main() {
 	config.LoadEnv()
 	// db.Connect()
-	// init.LoadInitialSQL() // If needed to load purchase.sql
+	// init.LoadInitialSQL() // if needed to load purchase.sql
 
 	r := gin.Default()
 	api.RegisterRoutes(r)

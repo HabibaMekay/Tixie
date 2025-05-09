@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 
@@ -24,19 +23,19 @@ func StripeWebhook(w http.ResponseWriter, r *http.Request) {
 
 	event, err := webhook.ConstructEvent(payload, sigHeader, secret)
 	if err != nil {
-		log.Printf("Webhook signature verification failed: %v", err)
+		logger.Printf("Webhook signature verification failed: %v", err)
 		http.Error(w, "Webhook signature verification failed", http.StatusBadRequest)
 		return
 	}
 
 	if event.Type == "payment_intent.succeeded" {
-		log.Printf("PaymentIntent %s succeeded", event.ID)
+		logger.Printf("PaymentIntent %s succeeded", event.ID)
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
 
 func SimulateWebhook(w http.ResponseWriter, r *http.Request) {
-	log.Println("simulated PaymentIntent succeeded")
+	logger.Println("simulate PaymentIntent succeeded")
 	w.WriteHeader(http.StatusOK)
 }
