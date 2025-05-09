@@ -13,7 +13,7 @@ import (
 
 type WebhookHandler struct {
 	broker  *brokerPkg.Broker
-	breaker *circuitbreaker.Breaker
+	breaker *circuitbreaker.CircuitBreaker
 }
 
 type EmailMessage struct {
@@ -29,7 +29,7 @@ func NewWebhookHandler() *WebhookHandler {
 
 	return &WebhookHandler{
 		broker:  broker,
-		breaker: circuitbreaker.NewBreaker("payment-webhook-service"),
+		breaker: circuitbreaker.NewCircuitBreaker(circuitbreaker.DefaultSettings("payment-webhook-service")),
 	}
 }
 

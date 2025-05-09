@@ -64,12 +64,10 @@ func startMessageConsumer(rabbitmqURL string) {
 			params := &stripe.PaymentIntentParams{
 				Amount:   stripe.Int64(int64(reservationMsg.Amount)),
 				Currency: stripe.String(string(stripe.CurrencyUSD)),
-				Metadata: map[string]string{
-					"reservation_id": fmt.Sprintf("%d", reservationMsg.ReservationID),
-					"event_id":       fmt.Sprintf("%d", reservationMsg.EventID),
-					"user_id":        fmt.Sprintf("%d", reservationMsg.UserID),
-				},
 			}
+			params.AddMetadata("reservation_id", fmt.Sprintf("%d", reservationMsg.ReservationID))
+			params.AddMetadata("event_id", fmt.Sprintf("%d", reservationMsg.EventID))
+			params.AddMetadata("user_id", fmt.Sprintf("%d", reservationMsg.UserID))
 
 			pi, err := paymentintent.New(params)
 			if err != nil {

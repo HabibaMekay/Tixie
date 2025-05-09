@@ -15,12 +15,12 @@ import (
 )
 
 type PaymentHandler struct {
-	breaker *circuitbreaker.Breaker
+	breaker *circuitbreaker.CircuitBreaker
 }
 
 func NewPaymentHandler() *PaymentHandler {
 	return &PaymentHandler{
-		breaker: circuitbreaker.NewBreaker("payment-service"),
+		breaker: circuitbreaker.NewCircuitBreaker(circuitbreaker.DefaultSettings("payment-service")),
 	}
 }
 

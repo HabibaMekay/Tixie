@@ -5,7 +5,7 @@ import (
 	"event-service/internal/db/models"
 	"fmt"
 
-	circuitbreaker "tixie.local/common"
+	"tixie.local/common/circuitbreaker"
 )
 
 type EventRepository struct {
@@ -22,49 +22,80 @@ func NewEventRepository(db *sql.DB) *EventRepository {
 
 func (r *EventRepository) GetAllEvents() ([]models.Event, error) {
 	var events []models.Event
-	err := r.breaker.Execute(func() error {
+
+	result := r.breaker.Execute(func() (interface{}, error) {
 		query := `SELECT id, name, date, venue, total_tickets, vendor_id, price, sold_tickets, tickets_left, tickets_reserved, reservation_timeout FROM events`
 		rows, err := r.DB.Query(query)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		defer rows.Close()
 
+		var localEvents []models.Event
 		for rows.Next() {
 			var e models.Event
 			if err := rows.Scan(&e.ID, &e.Name, &e.Date, &e.Venue, &e.TotalTickets, &e.VendorID, &e.Price, &e.SoldTickets, &e.TicketsLeft, &e.TicketsReserved, &e.ReservationTimeout); err != nil {
-				return err
+				return nil, err
 			}
-			events = append(events, e)
+			localEvents = append(localEvents, e)
 		}
-		return nil
+		return localEvents, nil
 	})
-	return events, err
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	if fetchedEvents, ok := result.Data.([]models.Event); ok {
+		events = fetchedEvents
+	}
+
+	return events, nil
 }
 
 func (r *EventRepository) CreateEvent(event models.Event) error {
-	return r.breaker.Execute(func() error {
+	result := r.breaker.Execute(func() (interface{}, error) {
 		query := `
             INSERT INTO events (name, date, venue, total_tickets, vendor_id, price, tickets_reserved, reservation_timeout)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         `
 		_, err := r.DB.Exec(query, event.Name, event.Date, event.Venue, event.TotalTickets, event.VendorID, event.Price, 0, event.ReservationTimeout)
-		return err
+		return nil, err
 	})
+
+	return result.Error
 }
 
 func (r *EventRepository) GetEventByID(id int) (models.Event, error) {
 	var e models.Event
-	err := r.breaker.Execute(func() error {
+
+	result := r.breaker.Execute(func() (interface{}, error) {
 		query := `SELECT id, name, date, venue, total_tickets, vendor_id, price, sold_tickets, tickets_left, tickets_reserved, reservation_timeout 
 				  FROM events WHERE id = $1`
-		return r.DB.QueryRow(query, id).Scan(&e.ID, &e.Name, &e.Date, &e.Venue, &e.TotalTickets, &e.VendorID, &e.Price, &e.SoldTickets, &e.TicketsLeft, &e.TicketsReserved, &e.ReservationTimeout)
+
+		var event models.Event
+		err := r.DB.QueryRow(query, id).Scan(
+			&event.ID, &event.Name, &event.Date, &event.Venue,
+			&event.TotalTickets, &event.VendorID, &event.Price,
+			&event.SoldTickets, &event.TicketsLeft, &event.TicketsReserved,
+			&event.ReservationTimeout)
+
+		return event, err
 	})
-	return e, err
+
+	if result.Error != nil {
+		return e, result.Error
+	}
+
+	if fetchedEvent, ok := result.Data.(models.Event); ok {
+		e = fetchedEvent
+	}
+
+	return e, nil
 }
 
 func (r *EventRepository) UpdateTicketsSold(eventID string, ticketsToBuy int) error {
-	return r.breaker.Execute(func() error {
+	result := r.breaker.Execute(func() (interface{}, error) {
 		var event struct {
 			TotalTickets    int `json:"total_tickets"`
 			SoldTickets     int `json:"sold_tickets"`
@@ -74,16 +105,16 @@ func (r *EventRepository) UpdateTicketsSold(eventID string, ticketsToBuy int) er
 		query := `SELECT total_tickets, sold_tickets, tickets_reserved FROM events WHERE id = $1`
 		err := r.DB.QueryRow(query, eventID).Scan(&event.TotalTickets, &event.SoldTickets, &event.TicketsReserved)
 		if err != nil {
-			return fmt.Errorf("event not found: %v", err)
+			return nil, fmt.Errorf("event not found: %v", err)
 		}
 
 		if ticketsToBuy <= 0 {
-			return fmt.Errorf("tickets to buy must be greater than zero")
+			return nil, fmt.Errorf("tickets to buy must be greater than zero")
 		}
 
 		// Check both sold and reserved tickets
 		if event.SoldTickets+ticketsToBuy > event.TotalTickets {
-			return fmt.Errorf("not enough tickets available")
+			return nil, fmt.Errorf("not enough tickets available")
 		}
 
 		newSoldTickets := event.SoldTickets + ticketsToBuy
@@ -92,19 +123,21 @@ func (r *EventRepository) UpdateTicketsSold(eventID string, ticketsToBuy int) er
 		query = `UPDATE events SET sold_tickets = $1, tickets_left = $2 WHERE id = $3`
 		_, err = r.DB.Exec(query, newSoldTickets, ticketsLeft, eventID)
 		if err != nil {
-			return fmt.Errorf("failed to update tickets sold: %v", err)
+			return nil, fmt.Errorf("failed to update tickets sold: %v", err)
 		}
 
-		return nil
+		return nil, nil
 	})
+
+	return result.Error
 }
 
 // ReserveTicket temporarily reserves a ticket for an event
 func (r *EventRepository) ReserveTicket(eventID int) error {
-	return r.breaker.Execute(func() error {
+	result := r.breaker.Execute(func() (interface{}, error) {
 		tx, err := r.DB.Begin()
 		if err != nil {
-			return fmt.Errorf("failed to begin transaction: %v", err)
+			return nil, fmt.Errorf("failed to begin transaction: %v", err)
 		}
 
 		// Attempt to rollback by default - will be ignored if commit succeeds
@@ -129,13 +162,13 @@ func (r *EventRepository) ReserveTicket(eventID int) error {
 			&event.TicketsLeft,
 		)
 		if err != nil {
-			return fmt.Errorf("event not found: %v", err)
+			return nil, fmt.Errorf("event not found: %v", err)
 		}
 
 		// Check if tickets are available
 		availableTickets := event.TotalTickets - event.SoldTickets - event.TicketsReserved
 		if availableTickets <= 0 {
-			return fmt.Errorf("no tickets available")
+			return nil, fmt.Errorf("no tickets available")
 		}
 
 		// Update reserved count and available tickets
@@ -145,24 +178,26 @@ func (r *EventRepository) ReserveTicket(eventID int) error {
 				 WHERE id = $1`
 		_, err = tx.Exec(query, eventID)
 		if err != nil {
-			return fmt.Errorf("failed to reserve ticket: %v", err)
+			return nil, fmt.Errorf("failed to reserve ticket: %v", err)
 		}
 
 		// Commit the transaction
 		if err = tx.Commit(); err != nil {
-			return fmt.Errorf("failed to commit transaction: %v", err)
+			return nil, fmt.Errorf("failed to commit transaction: %v", err)
 		}
 
-		return nil
+		return nil, nil
 	})
+
+	return result.Error
 }
 
 // CompleteReservation converts a reservation into a sold ticket
 func (r *EventRepository) CompleteReservation(eventID int) error {
-	return r.breaker.Execute(func() error {
+	result := r.breaker.Execute(func() (interface{}, error) {
 		tx, err := r.DB.Begin()
 		if err != nil {
-			return fmt.Errorf("failed to begin transaction: %v", err)
+			return nil, fmt.Errorf("failed to begin transaction: %v", err)
 		}
 
 		defer tx.Rollback()
@@ -172,11 +207,11 @@ func (r *EventRepository) CompleteReservation(eventID int) error {
 		var ticketsReserved int
 		err = tx.QueryRow(query, eventID).Scan(&ticketsReserved)
 		if err != nil {
-			return fmt.Errorf("event not found: %v", err)
+			return nil, fmt.Errorf("event not found: %v", err)
 		}
 
 		if ticketsReserved <= 0 {
-			return fmt.Errorf("no reserved tickets to complete")
+			return nil, fmt.Errorf("no reserved tickets to complete")
 		}
 
 		// Convert a reserved ticket to a sold ticket
@@ -186,24 +221,26 @@ func (r *EventRepository) CompleteReservation(eventID int) error {
 				 WHERE id = $1`
 		_, err = tx.Exec(query, eventID)
 		if err != nil {
-			return fmt.Errorf("failed to complete reservation: %v", err)
+			return nil, fmt.Errorf("failed to complete reservation: %v", err)
 		}
 
 		// Commit the transaction
 		if err = tx.Commit(); err != nil {
-			return fmt.Errorf("failed to commit transaction: %v", err)
+			return nil, fmt.Errorf("failed to commit transaction: %v", err)
 		}
 
-		return nil
+		return nil, nil
 	})
+
+	return result.Error
 }
 
 // ReleaseReservation releases a reserved ticket
 func (r *EventRepository) ReleaseReservation(eventID int) error {
-	return r.breaker.Execute(func() error {
+	result := r.breaker.Execute(func() (interface{}, error) {
 		tx, err := r.DB.Begin()
 		if err != nil {
-			return fmt.Errorf("failed to begin transaction: %v", err)
+			return nil, fmt.Errorf("failed to begin transaction: %v", err)
 		}
 
 		defer tx.Rollback()
@@ -213,11 +250,11 @@ func (r *EventRepository) ReleaseReservation(eventID int) error {
 		var ticketsReserved int
 		err = tx.QueryRow(query, eventID).Scan(&ticketsReserved)
 		if err != nil {
-			return fmt.Errorf("event not found: %v", err)
+			return nil, fmt.Errorf("event not found: %v", err)
 		}
 
 		if ticketsReserved <= 0 {
-			return fmt.Errorf("no reserved tickets to release")
+			return nil, fmt.Errorf("no reserved tickets to release")
 		}
 
 		// Release a reserved ticket
@@ -227,14 +264,16 @@ func (r *EventRepository) ReleaseReservation(eventID int) error {
 				 WHERE id = $1`
 		_, err = tx.Exec(query, eventID)
 		if err != nil {
-			return fmt.Errorf("failed to release reservation: %v", err)
+			return nil, fmt.Errorf("failed to release reservation: %v", err)
 		}
 
 		// Commit the transaction
 		if err = tx.Commit(); err != nil {
-			return fmt.Errorf("failed to commit transaction: %v", err)
+			return nil, fmt.Errorf("failed to commit transaction: %v", err)
 		}
 
-		return nil
+		return nil, nil
 	})
+
+	return result.Error
 }
