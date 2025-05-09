@@ -2,7 +2,7 @@ CREATE TABLE ticket (
     ticket_id SERIAL PRIMARY KEY,
     event_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
-    ticket_code VARCHAR(32) NOT NULL UNIQUE,
+    ticket_code UUID NOT NULL UNIQUE,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     CONSTRAINT valid_status CHECK (status IN ('active', 'used', 'cancelled'))
 );

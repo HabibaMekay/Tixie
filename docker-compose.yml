@@ -6,6 +6,23 @@ services:
     networks:
       - app-network
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "15672:15672"
+    networks:
+      - message-net
+      - app-network
+
   ticket-db:
     image: postgres:latest
     environment:
@@ -26,8 +43,8 @@ services:
       - db-network
   ticket-service-1:
     build:
-      context: ./src/services/ticket-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: ticket-service/Dockerfile
     container_name: ticket-service-1
     ports:
       - "9082:8082"
@@ -42,15 +59,18 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
       - DB_SSLMODE=${DB_SSLMODE}
+      - USER_SERVICE_URL=${USER_SERVICE_1}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_1}
     networks:
       - db-network
-      - gateway1-net 
+      - gateway1-net
+      - message-net
   
 
   ticket-service-2:
     build:
-      context: ./src/services/ticket-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: ticket-service/Dockerfile
     container_name: ticket-service-2
     depends_on:
       ticket-db:
@@ -66,11 +86,11 @@ services:
     networks:
       - db-network
       - gateway2-net
-
+      - message-net
   ticket-service-3:
     build:
-      context: ./src/services/ticket-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: ticket-service/Dockerfile
     container_name: ticket-service-3
     depends_on:
       ticket-db:
@@ -86,7 +106,7 @@ services:
     networks:
       - db-network
       - gateway3-net
-
+      - message-net
   reservation-db:
       image: postgres:latest
       environment:
@@ -105,11 +125,12 @@ services:
         start_period: 10s
       networks:
         - db-network
+        - payment-net
 
   reservation-service-1:
     build:
-      context: ./src/services/reservation-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: reservation-service/Dockerfile
     container_name: reservation-service-1
     depends_on:
       ticket-db:
@@ -124,14 +145,20 @@ services:
       - DB_PASSWORD=${DB_PASSWORD_RESERVATION}
       - DB_NAME=${DB_NAME_RESERVATION}
       - DB_SSLMODE=${DB_SSLMODE_RESERVATION}
+      - TICKET_SERVICE_URL=${TICKET_SERVICE_1}
+      - USER_SERVICE_URL=${USER_SERVICE_1}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_1}
+      - PAYMENT_SERVICE_URL=${PAYMENT_SERVICE}
+      - RABBITMQ_URL=${RABBITMQ_URL}
     networks:
       - db-network
       - gateway1-net 
-
+      - payment-net
+      - message-net
   reservation-service-2:
     build:
-      context: ./src/services/reservation-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: reservation-service/Dockerfile
     container_name: reservation-service-2
     depends_on:
       ticket-db:
@@ -146,13 +173,19 @@ services:
       - DB_PASSWORD=${DB_PASSWORD_RESERVATION}
       - DB_NAME=${DB_NAME_RESERVATION}
       - DB_SSLMODE=${DB_SSLMODE_RESERVATION}
+      - TICKET_SERVICE_URL=${TICKET_SERVICE_2}
+      - USER_SERVICE_URL=${USER_SERVICE_2}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_2}
+      - RABBITMQ_URL=${RABBITMQ_URL}
     networks:
       - db-network
-      - gateway2-net 
+      - gateway2-net
+      - payment-net
+      - message-net
   reservation-service-3:
     build:
-      context: ./src/services/reservation-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: reservation-service/Dockerfile
     container_name: reservation-service-3
     depends_on:
       ticket-db:
@@ -167,18 +200,49 @@ services:
       - DB_PASSWORD=${DB_PASSWORD_RESERVATION}
       - DB_NAME=${DB_NAME_RESERVATION}
       - DB_SSLMODE=${DB_SSLMODE_RESERVATION}
+      - TICKET_SERVICE_URL=${TICKET_SERVICE_3}
+      - USER_SERVICE_URL=${USER_SERVICE_3}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_3}
+      - RABBITMQ_URL=${RABBITMQ_URL}
     networks:
       - db-network
       - gateway3-net 
-
-  # payment:
-  #     build:
-  #       context: ./services/payment
-  #     ports:
-  #       - "8088:8088"
-  #     env_file:
-  #       - ./.env
-  #     restart: unless-stopped
+      - payment-net
+      - message-net
+  payment:
+      container_name: payment
+      build:
+        context: ./src/services
+        dockerfile: payment/Dockerfile
+      environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      restart: unless-stopped
+      ports:
+        - "2512:8088"
+      networks:
+      - payment-net
+      - message-net
+  
+  notification-service:
+    container_name: notification-service
+    build:
+        context: ./src/services
+        dockerfile: notification-service/Dockerfile
+    environment:
+      - MAILERSEND_API_KEY=${MAILERSEND_KEY}
+      - MAILERSEND_TEMPLATE_ID=${MAILERSEND_TID}
+      - MAILERSEND_EMAIL=${MAILERSEND_EMAIL}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - message-net
 
   auth-1:
     build:
@@ -197,6 +261,7 @@ services:
     networks:
       - db-network
       - gateway1-net
+      - message-net
   auth-2:
     build:
       context: ./src/services/auth
@@ -212,6 +277,7 @@ services:
     networks:
       - db-network
       - gateway2-net
+      - message-net
   auth-3:
     build:
       context: ./src/services/auth
@@ -224,7 +290,7 @@ services:
     networks:
       - db-network
       - gateway3-net
-    
+      - message-net
   db-user:
     image: postgres:15
     environment:
@@ -248,8 +314,8 @@ services:
       
   user-service-1:
     build: 
-      context: ./src/services/user-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: user-service/Dockerfile
     container_name: user-service-1
     ports:
       - "2341:8081"
@@ -261,11 +327,11 @@ services:
     networks:
       - db-network
       - gateway1-net
-  
+      - message-net  
   user-service-2:
     build: 
-      context: ./src/services/user-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: user-service/Dockerfile
     container_name: user-service-2
     env_file:
       - .env
@@ -277,8 +343,8 @@ services:
       - gateway2-net
   user-service-3:
     build: 
-      context: ./src/services/user-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: user-service/Dockerfile
     container_name: user-service-3
     env_file:
       - .env
@@ -288,6 +354,7 @@ services:
     networks:
       - db-network
       - gateway3-net
+      - message-net
   event-db:
     container_name: event-db
     image: postgres:15
@@ -308,8 +375,8 @@ services:
   event-service-1:
     container_name: event-service-1
     build: 
-      context: ./src/services/event-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: event-service/Dockerfile
     depends_on:
       event-db:
         condition: service_healthy
@@ -324,13 +391,13 @@ services:
     networks:
       - db-network
       - gateway1-net
-  
+      - message-net  
 
   event-service-2:
     container_name: event-service-2
     build: 
-      context: ./src/services/event-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: event-service/Dockerfile
     depends_on:
       event-db:
         condition: service_healthy
@@ -345,12 +412,12 @@ services:
     networks:
       - db-network
       - gateway2-net
-
+      - message-net
   event-service-3:
     container_name: event-service-3
     build: 
-      context: ./src/services/event-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: event-service/Dockerfile
     depends_on:
       event-db:
         condition: service_healthy
@@ -365,6 +432,47 @@ services:
     networks:
       - db-network
       - gateway3-net
+      - message-net
+  vendor-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=${DB_VENDOR_VENDOR}
+      - POSTGRES_PASSWORD=${DB_PASSWORD_VENDOR}
+      - POSTGRES_DB=${DB_NAME_VENDOR}
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"  
+    volumes:
+      - ./src/services/vendor-service/internal/db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_VENDOR_VENDOR}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - db-network
+
+  vendor-service:
+    container_name: vendor-service
+    build: 
+        context: ./src/services
+        dockerfile: vendor-service/Dockerfile
+    depends_on:
+       vendor-db:
+           condition: service_healthy
+    environment:
+      - DOCKER_COMPOSE=true
+      - DB_VENDOR_HOST=${DB_VENDOR_HOST}
+      - DB_PORT_VENDOR=${DB_PORT_VENDOR}
+      - DB_VENDOR_VENDOR=${DB_VENDOR_VENDOR}
+      - DB_PASSWORD_VENDOR=${DB_PASSWORD_VENDOR}
+      - DB_NAME_VENDOR=${DB_NAME_VENDOR}
+      - DB_SSLMODE_VENDOR=${DB_SSLMODE_VENDOR}
+    networks:
+      -  db-network
+      - gateway1-net 
+      - message-net
   gateway1:
     build:
       context: .
@@ -463,5 +571,9 @@ networks:
   gateway2-net:
     driver: bridge
   gateway3-net:
+    driver: bridge
+  payment-net:
+    driver: bridge
+  message-net:
     driver: bridge
 

@@ -6,11 +6,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRoutes(r *gin.Engine, purchaseRepo *repos.PurchaseRepository, gatewayBaseURL string) {
-	handler := NewHandler(purchaseRepo, gatewayBaseURL)
+func SetupRoutes(r *gin.Engine, purchaseRepo *repos.PurchaseRepository) {
+	handler := NewHandler(purchaseRepo)
 	res := r.Group("/v1")
 	{
-		res.POST("/", handler.ReserveTicket)
+		res.POST("", handler.ReserveTicket)
 		//res.GET("/:id", handler.GetTicket)
+		res.POST("/verify", handler.VerifyTicket)
 	}
 }

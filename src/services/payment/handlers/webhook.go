@@ -1,15 +1,40 @@
 package handlers
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/stripe/stripe-go/webhook"
+	brokerPkg "tixie.local/broker"
+	circuitbreaker "tixie.local/common"
 )
 
-func StripeWebhook(w http.ResponseWriter, r *http.Request) {
+type WebhookHandler struct {
+	broker  *brokerPkg.Broker
+	breaker *circuitbreaker.Breaker
+}
+
+type EmailMessage struct {
+	RecipientEmail string `json:"recipient_email"`
+	TicketID       string `json:"ticket_id"`
+}
+
+func NewWebhookHandler() *WebhookHandler {
+	broker, err := brokerPkg.NewBroker(os.Getenv("RABBITMQ_URL"), "notification", "topic")
+	if err != nil {
+		log.Printf("Warning: Failed to create broker: %v", err)
+	}
+
+	return &WebhookHandler{
+		broker:  broker,
+		breaker: circuitbreaker.NewBreaker("payment-webhook-service"),
+	}
+}
+
+func (h *WebhookHandler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 	const MaxBodyBytes = int64(65536)
 	r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
 
@@ -22,21 +47,63 @@ func StripeWebhook(w http.ResponseWriter, r *http.Request) {
 	sigHeader := r.Header.Get("Stripe-Signature")
 	secret := os.Getenv("SECRET_KEY")
 
-	event, err := webhook.ConstructEvent(payload, sigHeader, secret)
-	if err != nil {
-		log.Printf("Webhook signature verification failed: %v", err)
-		http.Error(w, "Webhook signature verification failed", http.StatusBadRequest)
-		return
-	}
+	result := h.breaker.Execute(func() (interface{}, error) {
+		event, err := webhook.ConstructEvent(payload, sigHeader, secret)
+		if err != nil {
+			return nil, fmt.Errorf("webhook signature verification failed: %v", err)
+		}
 
-	if event.Type == "payment_intent.succeeded" {
-		log.Printf("PaymentIntent %s succeeded", event.ID)
+		if event.Type == "payment_intent.succeeded" {
+			log.Printf("PaymentIntent %s succeeded", event.ID)
+		}
+
+		return event, nil
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			http.Error(w, msg, status)
+			return
+		}
+		log.Printf("Webhook error: %v", result.Error)
+		http.Error(w, result.Error.Error(), http.StatusBadRequest)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
 
-func SimulateWebhook(w http.ResponseWriter, r *http.Request) {
+func (h *WebhookHandler) SimulateWebhook(w http.ResponseWriter, r *http.Request) {
 	log.Println("simulated PaymentIntent succeeded")
+
+	if h.broker == nil {
+		http.Error(w, "Message broker not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	result := h.breaker.Execute(func() (interface{}, error) {
+		msg := EmailMessage{
+			RecipientEmail: "leaguedo@gmail.com",
+			TicketID:       "abc-123-ticket",
+		}
+		if err := h.broker.Publish(msg, "email"); err != nil {
+			return nil, fmt.Errorf("failed to publish email notification: %v", err)
+		}
+		return nil, nil
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			http.Error(w, msg, status)
+			return
+		}
+		log.Printf("Failed to publish notification: %v", result.Error)
+		http.Error(w, result.Error.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Println("Published email notification to notification-service successfully.")
 	w.WriteHeader(http.StatusOK)
 }
