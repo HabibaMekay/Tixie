@@ -11,32 +11,7 @@ const queryString = require('querystring');
 const { retryWithBackoff } = require('./utils/retry.js');
 const http = require('http');
 
-// Protected vendor routes that require vendor role
-const vendorProtectedRoutes = [
-  { path: '/api/event/v1', methods: ['POST'] }
-];
 
-// Middleware to check if user is a vendor
-const isVendor = (req, res, next) => {
-  // First check if the route needs vendor protection
-  const needsVendorAccess = vendorProtectedRoutes.some(route => 
-    req.path.startsWith(route.path) && route.methods.includes(req.method)
-  );
-
-  if (!needsVendorAccess) {
-    return next();
-  }
-
-  // If route needs protection, check user role from JWT data
-  if (!req.user || !req.user.role || req.user.role !== 'vendor') {
-    return res.status(403).json({
-      error: 'Forbidden',
-      message: 'This route is only accessible to vendors'
-    });
-  }
-
-  next();
-};
 
 const instance = process.env.INSTANCE_NAME;
 const targetService = process.env.TICKET_SERVICE_URL;
@@ -44,6 +19,7 @@ const targetUserService = process.env.USER_SERVICE_URL;
 const targetAuthService = process.env.AUTH_SERVICE_URL;
 const targetEventService = process.env.EVENT_SERVICE_URL;
 const targetReserveService = process.env.RESERVE_SERVICE_URL;
+const targetVendorService = process.env.VENDOR_SERVICE_URL;
 
 const app = express();
 const server = http.createServer(app);
@@ -140,6 +116,9 @@ server.on('upgrade', (req, socket, head) => {
 
     verification.verifyToken(token.replace('Bearer ', ''))
       .then(decoded => {
+        // Store the decoded JWT in the request for potential use by the backend
+        req.user = decoded;
+        
         // Modify the URL to match the internal service path
         req.url = req.url.replace(/^\/api\/tickets/, '');
         wsProxy.ws(req, socket, head);
@@ -170,17 +149,63 @@ app.use((req, res, next) => {
     '/api/auth/login', //login duhh
     '/api/auth/oauth2-login', //logging in using oauth2
     '/api/auth/callback', //oauth callback
-    '/api/test'
+    '/api/test',
+    '/api/vendor/v1',
+    '/api/vendor/v1/authenticate'
   ];
   const isOpen = openPaths.some(path => req.path.startsWith(path) && (req.method === 'POST' || req.method === 'GET'));
   if (isOpen) return next();
   return verification(req, res, next);
 });
 
-// Add vendor check after JWT verification
+
+const vendorProtectedRoutes = [
+  { path: '/api/event/v1/:id/events', methods: ['POST'] }
+];
+
+// Middleware to check if user is a vendor or not 
+const isVendor = (req, res, next) => {
+  const needsVendorAccess = vendorProtectedRoutes.some(route => {
+    const pathPattern = route.path.replace(/:\w+/g, '[^/]+');
+    const regex = new RegExp(`^${pathPattern}`);
+    return regex.test(req.path) && route.methods.includes(req.method);
+  });
+
+  if (!needsVendorAccess) {
+    return next();
+  }
+
+  // Log for debugging purposes
+  console.log(`[VENDOR-CHECK] Checking vendor access for ${req.method} ${req.path}`);
+  
+  if (!req.user) {
+    console.warn(`[VENDOR-CHECK] No user object found in request for ${req.path}`);
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Authentication required'
+    });
+  }
+  
+  if (!req.user.role) {
+    console.warn(`[VENDOR-CHECK] User ${req.user.username || 'unknown'} has no role specified in JWT`);
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Missing role information'
+    });
+  }
+
+  if (req.user.role !== 'vendor') {
+    console.warn(`[VENDOR-CHECK] User ${req.user.username || 'unknown'} with role ${req.user.role} attempted to access vendor endpoint`);
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'This route is only accessible to vendors'
+    });
+  }
+  console.log(`[VENDOR-CHECK] Vendor access granted for ${req.user.username || 'unknown'}`);
+  next();
+};
 app.use(isVendor);
 
-// Create a reusable function for proxying with retry
 const proxyWithRetry = (req, res, target) => {
   retryWithBackoff(
     () => {
@@ -228,6 +253,11 @@ app.use('/api/event', (req, res) => {
 
 app.use('/api/reserve', (req, res) => {
   req.url = req.url.replace(/^\/api\/reserve/, '');
+  proxyWithRetry(req, res, targetReserveService);
+});
+
+app.use('/api/vendor', (req, res) => {
+  req.url = req.url.replace(/^\/api\/vendor/, '');
   proxyWithRetry(req, res, targetReserveService);
 });
 

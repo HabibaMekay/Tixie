@@ -39,6 +39,18 @@ func Login(c *gin.Context) {
 		return
 	}
 
+	// Set default role if not provided
+	if creds.Role == "" {
+		creds.Role = "user"
+	}
+
+	// Validate that role is either "user" or "vendor"
+	if creds.Role != "user" && creds.Role != "vendor" {
+		logger.Println("Invalid role in login request")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid role, must be 'user' or 'vendor'"})
+		return
+	}
+
 	valid, err := repos.AuthenticateUser(creds)
 	if err != nil {
 		logger.Println("Internal error happened during login request")
@@ -51,7 +63,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	token, err := utils.GenerateJWT(creds.Username)
+	token, err := utils.GenerateJWT(creds.Username, creds.Role)
 	if err != nil {
 		logger.Println("An error in token surfaced")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Token error"})
@@ -106,6 +118,20 @@ func OAuth2Callback(c *gin.Context) {
 		return
 	}
 
+	// Default role is user for OAuth2 logins
+	role := "user"
+
+	// Generate JWT token with role
+	jwtToken, err := utils.GenerateJWT(name, role)
+	if err != nil {
+		logger.Println("Failed to generate JWT token")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Token generation failed"})
+		return
+	}
+
+	// Add token to the response
+	userInfo["token"] = jwtToken
+
 	logger.Println("Oauth2 login successful!")
 	c.JSON(http.StatusOK, userInfo)
 }
@@ -122,5 +148,9 @@ func Protected(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Hello, %s!", claims.Username)})
+	c.JSON(http.StatusOK, gin.H{
+		"message":  fmt.Sprintf("Hello, %s!", claims.Username),
+		"username": claims.Username,
+		"role":     claims.Role,
+	})
 }

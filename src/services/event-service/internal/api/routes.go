@@ -14,6 +14,11 @@ func SetupRoutes(r *gin.Engine, repo *repos.EventRepository) {
 		events.GET("", handler.GetEvents)
 		events.POST("", handler.CreateEvent)
 		events.GET("/:id", handler.GetEventByID)
-		events.PATCH("/:id/tickets", handler.UpdateTicketsSold) 
+		events.PATCH("/:id/tickets", handler.UpdateTicketsSold)
+
+		// Reservation endpoints
+		events.POST("/:id/reserve", handler.ReserveTicket)
+		events.POST("/:id/complete-reservation", handler.CompleteReservation)
+		events.POST("/:id/release-reservation", handler.ReleaseReservation)
 	}
 }

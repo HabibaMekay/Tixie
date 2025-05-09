@@ -37,7 +37,7 @@ func NewEventHandler(repo *repos.EventRepository) *EventHandler {
 func (h *EventHandler) GetEvents(c *gin.Context) {
 	events, err := h.Repo.GetAllEvents()
 	if err != nil {
-		logger.Printf("error:", err.Error())
+		logger.Printf("error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -47,13 +47,18 @@ func (h *EventHandler) GetEvents(c *gin.Context) {
 func (h *EventHandler) CreateEvent(c *gin.Context) {
 	var event models.Event
 	if err := c.ShouldBindJSON(&event); err != nil {
-		logger.Printf("error:", err.Error())
+		logger.Printf("error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
 
+	// Set default reservation timeout if not specified
+	if event.ReservationTimeout <= 0 {
+		event.ReservationTimeout = 600 // Default 10 minutes
+	}
+
 	if err := h.Repo.CreateEvent(event); err != nil {
-		logger.Printf("error:", err.Error())
+		logger.Printf("error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create event"})
 		return
 	}
@@ -100,4 +105,82 @@ func (h *EventHandler) UpdateTicketsSold(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Tickets sold updated successfully"})
+}
+
+// ReserveTicket temporarily reserves a ticket for an event
+func (h *EventHandler) ReserveTicket(c *gin.Context) {
+	// Get event ID from URL path
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		logger.Printf("Invalid event ID format: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
+		return
+	}
+
+	// Call repository to reserve a ticket
+	err = h.Repo.ReserveTicket(id)
+	if err != nil {
+		logger.Printf("Failed to reserve ticket for event %d: %v", id, err)
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.Printf("Successfully reserved ticket for event %d", id)
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Ticket reserved successfully",
+		"event_id": id,
+	})
+}
+
+// CompleteReservation confirms a reservation and converts it to a sold ticket
+func (h *EventHandler) CompleteReservation(c *gin.Context) {
+	// Get event ID from URL path
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		logger.Printf("Invalid event ID format: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
+		return
+	}
+
+	// Call repository to complete the reservation
+	err = h.Repo.CompleteReservation(id)
+	if err != nil {
+		logger.Printf("Failed to complete reservation for event %d: %v", id, err)
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.Printf("Successfully completed reservation for event %d", id)
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Reservation completed successfully",
+		"event_id": id,
+	})
+}
+
+// ReleaseReservation releases a reserved ticket back to the available pool
+func (h *EventHandler) ReleaseReservation(c *gin.Context) {
+	// Get event ID from URL path
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		logger.Printf("Invalid event ID format: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
+		return
+	}
+
+	// Call repository to release the reservation
+	err = h.Repo.ReleaseReservation(id)
+	if err != nil {
+		logger.Printf("Failed to release reservation for event %d: %v", id, err)
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.Printf("Successfully released reservation for event %d", id)
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Reservation released successfully",
+		"event_id": id,
+	})
 }

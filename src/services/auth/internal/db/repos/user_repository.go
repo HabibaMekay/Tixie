@@ -31,7 +31,21 @@ func AuthenticateUser(creds models.Credentials) (bool, error) {
 		return false, err
 	}
 
-	resp, err := http.Post(fmt.Sprintf("%s/v1/authenticate", config.UserServiceURL), "application/json", bytes.NewBuffer(data))
+	// Determine which endpoint to call based on role
+	role := "user" // Default role
+
+	if creds.Role != "" {
+		role = creds.Role
+	}
+
+	var endpoint string
+	if role == "vendor" {
+		endpoint = fmt.Sprintf("%s/vendor/v1/authenticate", config.VendorServiceURL)
+	} else {
+		endpoint = fmt.Sprintf("%s/user/v1/authenticate", config.UserServiceURL)
+	}
+
+	resp, err := http.Post(endpoint, "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return false, err
 	}

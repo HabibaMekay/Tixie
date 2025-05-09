@@ -49,6 +49,12 @@ type Settings struct {
 	OnStateChange func(name string, from State, to State)
 }
 
+// Result represents the result of circuit breaker execution
+type Result struct {
+	Data  interface{}
+	Error error
+}
+
 var (
 	// ErrTooManyRequests is returned when the CB state is half open and the requests count is over the cb maxRequests
 	ErrTooManyRequests = errors.New("too many requests")
@@ -95,12 +101,13 @@ func NewCircuitBreaker(settings *Settings) *CircuitBreaker {
 }
 
 // Execute runs the given request if the circuit breaker accepts it
-func (cb *CircuitBreaker) Execute(req func() error) error {
+func (cb *CircuitBreaker) Execute(req func() (interface{}, error)) Result {
 	generation, err := cb.beforeRequest()
 	if err != nil {
-		return err
+		return Result{Error: err}
 	}
 
+	var data interface{}
 	defer func() {
 		if e := recover(); e != nil {
 			cb.afterRequest(generation, false)
@@ -108,9 +115,9 @@ func (cb *CircuitBreaker) Execute(req func() error) error {
 		}
 	}()
 
-	err = req()
+	data, err = req()
 	cb.afterRequest(generation, err == nil)
-	return err
+	return Result{Data: data, Error: err}
 }
 
 func (cb *CircuitBreaker) beforeRequest() (uint64, error) {
@@ -224,4 +231,17 @@ func (cb *CircuitBreaker) Counts() Counts {
 	cb.mutex.RLock()
 	defer cb.mutex.RUnlock()
 	return cb.counts
+}
+
+// IsCircuitBreakerError returns true if the error is a circuit breaker error
+func IsCircuitBreakerError(err error) bool {
+	return errors.Is(err, ErrCircuitBreakerOpen) || errors.Is(err, ErrTooManyRequests)
+}
+
+// HandleCircuitBreakerError returns appropriate HTTP status and message for circuit breaker errors
+func HandleCircuitBreakerError(err error) (int, string) {
+	if errors.Is(err, ErrCircuitBreakerOpen) || errors.Is(err, ErrTooManyRequests) {
+		return 503, "Service temporarily unavailable, please try again later"
+	}
+	return 500, "Internal Server Error"
 }

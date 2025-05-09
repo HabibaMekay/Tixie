@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stripe/stripe-go"
 	"github.com/stripe/stripe-go/paymentintent"
-	circuitbreaker "tixie.local/common"
+	"tixie.local/common/circuitbreaker"
 )
 
 type PaymentHandler struct {

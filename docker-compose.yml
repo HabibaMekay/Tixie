@@ -270,6 +270,7 @@ services:
     environment:
       - USER_SERVICE_URL=${USER_SERVICE_1}
       - JWT_SECRET=${JWT_SECRET}
+      - VENDOR_SERVICE_URL=${VENDOR_SERVICE}
     ports:
       - "8080:8080"
     env_file:
@@ -285,11 +286,11 @@ services:
   auth-2:
     build:
       context: ./src/services/auth
-      # dockerfile: ./src/services/auth/cmd/Dockerfile
       dockerfile: ./cmd/Dockerfile
     container_name: auth-2
     environment:
       - USER_SERVICE_URL=${USER_SERVICE_1}
+      - VENDOR_SERVICE_URL=${VENDOR_SERVICE}
       - JWT_SECRET=${JWT_SECRET}
     restart: unless-stopped
     ports:
@@ -309,6 +310,7 @@ services:
     environment:
       - USER_SERVICE_URL=${USER_SERVICE_1}
       - JWT_SECRET=${JWT_SECRET}
+      - VENDOR_SERVICE_URL=${VENDOR_SERVICE}
     restart: unless-stopped
     networks:
       - db-network
@@ -530,6 +532,7 @@ services:
       - AUTH_SERVICE_URL=${AUTH_SERVICE_1}
       - EVENT_SERVICE_URL=${EVENT_SERVICE_1}
       - RESERVE_SERVICE_URL=${RESERVE_SERVICE_1}
+      - VENDOR_SERVICE_URL=${VENDOR_SERVICE}
       - JWT_SECRET=${JWT_SECRET}
     depends_on:
       - redis
@@ -555,6 +558,7 @@ services:
       - EVENT_SERVICE_URL=${EVENT_SERVICE_2}
       - RESERVE_SERVICE_URL=${RESERVE_SERVICE_2}
       - JWT_SECRET=${JWT_SECRET}
+      - VENDOR_SERVICE_URL=${VENDOR_SERVICE}
     depends_on:
       - redis
       - ticket-service-2
@@ -579,6 +583,7 @@ services:
       - EVENT_SERVICE_URL=${EVENT_SERVICE_3}
       - RESERVE_SERVICE_URL=${RESERVE_SERVICE_3}
       - JWT_SECRET=${JWT_SECRET}
+      - VENDOR_SERVICE_URL=${VENDOR_SERVICE}
     depends_on:
       - redis
       - ticket-service-3

@@ -15,17 +15,13 @@ import (
 	"github.com/stripe/stripe-go"
 	"github.com/stripe/stripe-go/paymentintent"
 	brokerPkg "tixie.local/broker"
-	circuitbreaker "tixie.local/common"
+	brokermsg "tixie.local/common/brokermsg"
+	"tixie.local/common/circuitbreaker"
 )
-
-type PaymentMessage struct {
-	TicketID int   `json:"ticket_id"`
-	Amount   int64 `json:"amount"`
-}
 
 type PaymentConsumer struct {
 	broker        *brokerPkg.Broker
-	breaker       *circuitbreaker.Breaker
+	breaker       *circuitbreaker.CircuitBreaker
 	numWorkers    int
 	prefetchCount int
 	processWg     sync.WaitGroup
@@ -55,7 +51,7 @@ func NewPaymentConsumer(rabbitmqURL string, config ConsumerConfig) (*PaymentCons
 
 	return &PaymentConsumer{
 		broker:        broker,
-		breaker:       circuitbreaker.NewBreaker("payment-consumer-service"),
+		breaker:       circuitbreaker.NewCircuitBreaker(circuitbreaker.DefaultSettings("payment-consumer-service")),
 		numWorkers:    config.NumWorkers,
 		prefetchCount: config.PrefetchCount,
 		ctx:           ctx,
@@ -68,8 +64,8 @@ func (c *PaymentConsumer) processMessage(msg amqp.Delivery) {
 
 	log.Printf("Processing payment message: %s", msg.Body)
 
-	var paymentMsg PaymentMessage
-	err := json.Unmarshal(msg.Body, &paymentMsg)
+	var reservationMsg brokermsg.ReservationCompletedMessage
+	err := json.Unmarshal(msg.Body, &reservationMsg)
 	if err != nil {
 		log.Printf("Error unmarshaling message: %v", err)
 		msg.Reject(false) // Don't requeue malformed messages
@@ -80,10 +76,15 @@ func (c *PaymentConsumer) processMessage(msg amqp.Delivery) {
 	ctx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
 	defer cancel()
 
-	result := c.breaker.ExecuteContext(ctx, func() (interface{}, error) {
+	result := c.breaker.Execute(func() (interface{}, error) {
 		params := &stripe.PaymentIntentParams{
-			Amount:   stripe.Int64(paymentMsg.Amount),
+			Amount:   stripe.Int64(int64(reservationMsg.Amount)),
 			Currency: stripe.String(string(stripe.CurrencyUSD)),
+			Metadata: map[string]string{
+				"reservation_id": fmt.Sprintf("%d", reservationMsg.ReservationID),
+				"event_id":       fmt.Sprintf("%d", reservationMsg.EventID),
+				"user_id":        fmt.Sprintf("%d", reservationMsg.UserID),
+			},
 		}
 
 		pi, err := paymentintent.New(params)
@@ -91,7 +92,7 @@ func (c *PaymentConsumer) processMessage(msg amqp.Delivery) {
 			return nil, fmt.Errorf("failed to create payment intent: %v", err)
 		}
 
-		log.Printf("Created payment intent for ticket %d: %s", paymentMsg.TicketID, pi.ID)
+		log.Printf("Created payment intent for reservation %d: %s", reservationMsg.ReservationID, pi.ID)
 		return pi, nil
 	})
 
@@ -101,13 +102,45 @@ func (c *PaymentConsumer) processMessage(msg amqp.Delivery) {
 			// Requeue the message when circuit breaker is triggered for retry mechanisms to work
 			msg.Reject(true)
 		} else {
-			log.Printf("Error processing payment for ticket %d: %v", paymentMsg.TicketID, result.Error)
+			log.Printf("Error processing payment for reservation %d: %v", reservationMsg.ReservationID, result.Error)
+
+			// Publish payment failed message
+			failedMsg := brokermsg.PaymentFailedMessage{
+				ReservationID: reservationMsg.ReservationID,
+				Reason:        fmt.Sprintf("Failed to create payment: %v", result.Error),
+			}
+
+			if pubErr := c.broker.Publish(failedMsg, brokermsg.TopicPaymentFailed); pubErr != nil {
+				log.Printf("Error publishing payment failure message: %v", pubErr)
+			}
+
 			msg.Reject(false)
 		}
 		return
 	}
 
-	log.Printf("Successfully processed payment message for ticket: %d", paymentMsg.TicketID)
+	// Get payment intent from result
+	pi, ok := result.Data.(*stripe.PaymentIntent)
+	if !ok {
+		log.Printf("Error: unexpected result type")
+		msg.Reject(false)
+		return
+	}
+
+	// Publish payment processed message
+	processedMsg := brokermsg.PaymentProcessedMessage{
+		ReservationID: reservationMsg.ReservationID,
+		Amount:        reservationMsg.Amount,
+		PaymentID:     pi.ID,
+	}
+
+	if err := c.broker.Publish(processedMsg, brokermsg.TopicPaymentProcessed); err != nil {
+		log.Printf("Error publishing payment processed message: %v", err)
+		msg.Reject(true) // Requeue so we can try again
+		return
+	}
+
+	log.Printf("Successfully processed payment for reservation %d", reservationMsg.ReservationID)
 	msg.Ack(false) // Acknowledge successful processing
 }
 
@@ -130,8 +163,8 @@ func (c *PaymentConsumer) startWorker(messages <-chan amqp.Delivery, workerID in
 }
 
 func (c *PaymentConsumer) Start() error {
-	queueName := "payment_processing"
-	err := c.broker.DeclareAndBindQueue(queueName, "topay")
+	queueName := "payment_reservation_completed"
+	err := c.broker.DeclareAndBindQueue(queueName, brokermsg.TopicReservationCompleted)
 	if err != nil {
 		return fmt.Errorf("failed to declare and bind queue: %v", err)
 	}
@@ -152,7 +185,7 @@ func (c *PaymentConsumer) Start() error {
 		go c.startWorker(messages, i+1)
 	}
 
-	log.Printf("Payment consumer started with %d workers. Waiting for messages...", c.numWorkers)
+	log.Printf("Payment consumer started with %d workers. Waiting for reservation completion events...", c.numWorkers)
 
 	// Keep the consumer running until a termination signal
 	quit := make(chan os.Signal, 1)

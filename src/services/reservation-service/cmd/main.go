@@ -21,6 +21,7 @@ import (
 type ReservationService struct {
 	reservationDB *sqlx.DB
 	purchaseRepo  *repos.PurchaseRepository
+	reserveRepo   *repos.ReservationRepository
 	ticketClient  *http.Client
 	broker        *brokerPkg.Broker
 }
@@ -40,6 +41,7 @@ func NewReservationService() *ReservationService {
 	}
 
 	purchaseRepo := repos.NewPurchaseRepository(reservationDB)
+	reserveRepo := repos.NewReservationRepository(reservationDB)
 	ticketClient := &http.Client{Timeout: 10 * time.Second}
 
 	// Initialize broker
@@ -51,9 +53,57 @@ func NewReservationService() *ReservationService {
 	return &ReservationService{
 		reservationDB: reservationDB,
 		purchaseRepo:  purchaseRepo,
+		reserveRepo:   reserveRepo,
 		ticketClient:  ticketClient,
 		broker:        broker,
 	}
+}
+
+// Start a background job to clean up expired reservations
+func (s *ReservationService) startReservationCleanup() {
+	// Run cleanup every minute
+	ticker := time.NewTicker(1 * time.Minute)
+
+	go func() {
+		for range ticker.C {
+			log.Println("Running expired reservation cleanup job...")
+
+			// Get all expired reservations
+			reservations, err := s.reserveRepo.GetExpiredReservations()
+			if err != nil {
+				log.Printf("Error getting expired reservations: %v", err)
+				continue
+			}
+
+			log.Printf("Found %d expired reservations to clean up", len(reservations))
+
+			// Process each expired reservation
+			processed := 0
+			for _, reservation := range reservations {
+				// Call the event service to release the reservation
+				resp, err := http.Post(
+					fmt.Sprintf("%s/v1/%d/release-reservation", os.Getenv("EVENT_SERVICE_URL"), reservation.EventID),
+					"application/json",
+					nil,
+				)
+				if err != nil {
+					log.Printf("Error releasing reservation for event %d: %v", reservation.EventID, err)
+					continue
+				}
+				resp.Body.Close()
+
+				// Mark the reservation as expired
+				err = s.reserveRepo.ExpireReservation(reservation.ID)
+				if err != nil {
+					log.Printf("Error marking reservation %d as expired: %v", reservation.ID, err)
+					continue
+				}
+				processed++
+			}
+
+			log.Printf("Completed cleanup: processed %d of %d expired reservations", processed, len(reservations))
+		}
+	}()
 }
 
 func (s *ReservationService) startMessageConsumer() {
@@ -153,10 +203,13 @@ func main() {
 	// Start the message consumer
 	service.startMessageConsumer()
 
+	// Start the reservation cleanup job
+	service.startReservationCleanup()
+
 	router := gin.Default()
 
 	// Setup routes using the routes package
-	api.SetupRoutes(router, service.purchaseRepo)
+	api.SetupRoutes(router, service.purchaseRepo, service.reserveRepo)
 
 	// Handle graceful shutdown
 	quit := make(chan os.Signal, 1)

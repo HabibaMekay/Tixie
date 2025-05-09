@@ -11,10 +11,12 @@ import (
 var JWTKey []byte
 var OAuth2Config *oauth2.Config
 var UserServiceURL string
+var VendorServiceURL string
 
 func LoadEnv() {
 	jwtSecret := os.Getenv("JWT_SECRET")
 	UserServiceURL = os.Getenv("USER_SERVICE_URL")
+	VendorServiceURL = os.Getenv("VENDOR_SERVICE_URL")
 
 	if jwtSecret == "" {
 		fmt.Println("JWT_SECRET is not set")

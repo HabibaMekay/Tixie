@@ -13,6 +13,7 @@ import (
 	"github.com/stripe/stripe-go"
 	"github.com/stripe/stripe-go/paymentintent"
 	brokerPkg "tixie.local/broker"
+	brokermsg "tixie.local/common/brokermsg"
 )
 
 // PaymentMessage represents the structure of incoming payment messages
@@ -22,67 +23,84 @@ type PaymentMessage struct {
 }
 
 func startMessageConsumer(rabbitmqURL string) {
-	broker, err := brokerPkg.NewBroker(rabbitmqURL, "tixie", "topic")
+	// Create broker instance
+	broker, err := brokerPkg.NewBroker(rabbitmqURL, "payment-service", "topic")
 	if err != nil {
 		log.Printf("Failed to create broker: %v", err)
 		return
 	}
 	defer broker.Close()
 
-	queueName := "payment_requests"
-	err = broker.DeclareAndBindQueue(queueName, "topay")
+	// Set up queue for reservation completed events
+	queueName := "payment_reservation_completed"
+	err = broker.DeclareAndBindQueue(queueName, brokermsg.TopicReservationCompleted)
 	if err != nil {
 		log.Printf("Failed to declare and bind queue: %v", err)
 		return
 	}
 
+	// Start consuming messages
 	messages, err := broker.Consume(queueName)
 	if err != nil {
 		log.Printf("Failed to start consuming messages: %v", err)
 		return
 	}
 
-	log.Println("Payment service consumer started. Waiting for messages...")
+	log.Println("Payment service consumer started. Listening for reservation completion events...")
 
+	// Process messages
 	go func() {
 		for msg := range messages {
-			log.Printf("Received payment message: %s", msg.Body)
+			log.Printf("Received reservation completion message: %s", msg.Body)
 
-			var paymentMsg PaymentMessage
-			if err := json.Unmarshal(msg.Body, &paymentMsg); err != nil {
-				log.Printf("Error unmarshaling payment message: %v", err)
+			// Unmarshal the message
+			var reservationMsg brokermsg.ReservationCompletedMessage
+			if err := json.Unmarshal(msg.Body, &reservationMsg); err != nil {
+				log.Printf("Error unmarshaling reservation message: %v", err)
 				continue
 			}
 
 			// Create payment intent with Stripe
 			params := &stripe.PaymentIntentParams{
-				Amount:   stripe.Int64(int64(paymentMsg.Amount)),
+				Amount:   stripe.Int64(int64(reservationMsg.Amount)),
 				Currency: stripe.String(string(stripe.CurrencyUSD)),
+				Metadata: map[string]string{
+					"reservation_id": fmt.Sprintf("%d", reservationMsg.ReservationID),
+					"event_id":       fmt.Sprintf("%d", reservationMsg.EventID),
+					"user_id":        fmt.Sprintf("%d", reservationMsg.UserID),
+				},
 			}
 
 			pi, err := paymentintent.New(params)
 			if err != nil {
 				log.Printf("Error creating payment intent: %v", err)
+
+				// Publish payment failed message
+				failedMsg := brokermsg.PaymentFailedMessage{
+					ReservationID: reservationMsg.ReservationID,
+					Reason:        fmt.Sprintf("Failed to create payment: %v", err),
+				}
+
+				if pubErr := broker.Publish(failedMsg, brokermsg.TopicPaymentFailed); pubErr != nil {
+					log.Printf("Error publishing payment failure message: %v", pubErr)
+				}
 				continue
 			}
 
-			// Publish payment confirmation message
-			confirmationMsg := struct {
-				TicketID int    `json:"ticket_id"`
-				Amount   int    `json:"amount"`
-				Status   string `json:"status"`
-			}{
-				TicketID: paymentMsg.TicketID,
-				Amount:   paymentMsg.Amount,
-				Status:   "confirmed",
+			// Publish payment processed message
+			processedMsg := brokermsg.PaymentProcessedMessage{
+				ReservationID: reservationMsg.ReservationID,
+				Amount:        reservationMsg.Amount,
+				PaymentID:     pi.ID,
 			}
 
-			if err := broker.Publish(confirmationMsg, "payment.confirmed"); err != nil {
-				log.Printf("Error publishing confirmation message: %v", err)
+			if err := broker.Publish(processedMsg, brokermsg.TopicPaymentProcessed); err != nil {
+				log.Printf("Error publishing payment processed message: %v", err)
 				continue
 			}
 
-			log.Printf("Successfully processed payment for ticket %d, payment intent ID: %s", paymentMsg.TicketID, pi.ID)
+			log.Printf("Successfully processed payment for reservation %d, payment intent ID: %s",
+				reservationMsg.ReservationID, pi.ID)
 		}
 	}()
 }

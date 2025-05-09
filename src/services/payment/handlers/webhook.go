@@ -8,7 +8,7 @@ import (
 
 	"github.com/stripe/stripe-go/webhook"
 	brokerPkg "tixie.local/broker"
-	circuitbreaker "tixie.local/common"
+	"tixie.local/common/circuitbreaker"
 )
 
 type WebhookHandler struct {

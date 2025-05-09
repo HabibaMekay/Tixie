@@ -16,7 +16,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	brokerPkg "tixie.local/broker"
-	circuitbreaker "tixie.local/common"
+	brokermsg "tixie.local/common/brokermsg"
+	"tixie.local/common/circuitbreaker"
 )
 
 type eventDetails struct {
@@ -53,25 +54,27 @@ type ticketVerificationResponse struct {
 }
 
 type Handler struct {
-	repo       *repos.PurchaseRepository
-	httpClient *http.Client
-	broker     *brokerPkg.Broker
-	breaker    *circuitbreaker.Breaker
+	purchaseRepo *repos.PurchaseRepository
+	reserveRepo  *repos.ReservationRepository
+	httpClient   *http.Client
+	broker       *brokerPkg.Broker
+	breaker      *circuitbreaker.CircuitBreaker
 }
 
-func NewHandler(repo *repos.PurchaseRepository) *Handler {
+func NewHandler(purchaseRepo *repos.PurchaseRepository, reserveRepo *repos.ReservationRepository) *Handler {
 	broker, err := brokerPkg.NewBroker(os.Getenv("RABBITMQ_URL"), "payment", "topic")
 	if err != nil {
 		log.Printf("Warning: Failed to create broker: %v", err)
 	}
 
 	return &Handler{
-		repo: repo,
+		purchaseRepo: purchaseRepo,
+		reserveRepo:  reserveRepo,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
 		broker:  broker,
-		breaker: circuitbreaker.NewBreaker("reservation-service"),
+		breaker: circuitbreaker.NewCircuitBreaker(circuitbreaker.DefaultSettings("reservation-service")),
 	}
 }
 
@@ -86,7 +89,7 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 		return
 	}
 
-	// Fetch event details with circuit breaker
+	// Step 1: Get event details (including reservation timeout)
 	result := h.breaker.Execute(func() (interface{}, error) {
 		resp, err := h.httpClient.Get(fmt.Sprintf("%s/v1/%d", os.Getenv("EVENT_SERVICE_URL"), input.EventID))
 		if err != nil {
@@ -98,11 +101,16 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 			return nil, fmt.Errorf("event service returned status %d", resp.StatusCode)
 		}
 
-		var details eventDetails
-		if err := json.NewDecoder(resp.Body).Decode(&details); err != nil {
+		var event struct {
+			ID                 int     `json:"id"`
+			Price              float64 `json:"price"`
+			TicketsLeft        int     `json:"tickets_left"`
+			ReservationTimeout int     `json:"reservation_timeout"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&event); err != nil {
 			return nil, err
 		}
-		return details, nil
+		return event, nil
 	})
 
 	if result.Error != nil {
@@ -115,13 +123,66 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 		return
 	}
 
-	eventDetails, ok := result.Data.(eventDetails)
+	eventDetails, ok := result.Data.(struct {
+		ID                 int     `json:"id"`
+		Price              float64 `json:"price"`
+		TicketsLeft        int     `json:"tickets_left"`
+		ReservationTimeout int     `json:"reservation_timeout"`
+	})
 	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse event response"})
 		return
 	}
 
-	// Fetch user details with circuit breaker
+	// Check if tickets are available
+	if eventDetails.TicketsLeft <= 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "No tickets available for this event"})
+		return
+	}
+
+	// Step 2: Reserve the ticket in the event service
+	result = h.breaker.Execute(func() (interface{}, error) {
+		reserveReq := struct {
+			EventID int `json:"event_id"`
+		}{EventID: input.EventID}
+
+		reserveReqBody, err := json.Marshal(reserveReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal reservation request: %v", err)
+		}
+
+		// Make a POST request to reserve the ticket (increment the reserved count)
+		resp, err := h.httpClient.Post(
+			fmt.Sprintf("%s/v1/%d/reserve", os.Getenv("EVENT_SERVICE_URL"), input.EventID),
+			"application/json",
+			bytes.NewBuffer(reserveReqBody),
+		)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			// Read the error message
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("event service returned status %d: %s", resp.StatusCode, body)
+		}
+
+		// Successfully reserved a ticket in the event service
+		return true, nil
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to reserve ticket: %v", result.Error)})
+		return
+	}
+
+	// Step 3: Get user details to verify user exists
 	result = h.breaker.Execute(func() (interface{}, error) {
 		resp, err := h.httpClient.Get(fmt.Sprintf("%s/v1/%d", os.Getenv("USER_SERVICE_URL"), input.UserID))
 		if err != nil {
@@ -133,14 +194,14 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 			return nil, fmt.Errorf("user service returned status %d", resp.StatusCode)
 		}
 
-		var details userDetails
-		if err := json.NewDecoder(resp.Body).Decode(&details); err != nil {
-			return nil, err
-		}
-		return details, nil
+		// Just checking if user exists
+		return true, nil
 	})
 
 	if result.Error != nil {
+		// If we can't get user details, we should release the reservation
+		h.releaseReservation(input.EventID)
+
 		if circuitbreaker.IsCircuitBreakerError(result.Error) {
 			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
 			c.JSON(status, gin.H{"error": msg})
@@ -150,71 +211,23 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 		return
 	}
 
-	userDetails, ok := result.Data.(userDetails)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse user response"})
-		return
-	}
-
-	// Create ticket with circuit breaker
+	// Step 4: Create a reservation record in our database
 	result = h.breaker.Execute(func() (interface{}, error) {
-		ticketReq := struct {
-			EventID int `json:"event_id"`
-			UserID  int `json:"user_id"`
-		}{EventID: input.EventID, UserID: input.UserID}
-
-		ticketReqBody, err := json.Marshal(ticketReq)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal ticket request: %v", err)
-		}
-
-		resp, err := h.httpClient.Post(os.Getenv("TICKET_SERVICE_URL")+"/v1", "application/json", bytes.NewBuffer(ticketReqBody))
+		reservation, err := h.reserveRepo.CreateReservation(
+			input.EventID,
+			input.UserID,
+			eventDetails.ReservationTimeout,
+		)
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusCreated {
-			return nil, fmt.Errorf("ticket service returned status %d", resp.StatusCode)
-		}
-
-		var ticket ticketResponse
-		if err := json.NewDecoder(resp.Body).Decode(&ticket); err != nil {
-			return nil, err
-		}
-		return ticket, nil
+		return reservation, nil
 	})
 
 	if result.Error != nil {
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
-			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
-			c.JSON(status, gin.H{"error": msg})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create ticket: %v", result.Error)})
-		return
-	}
+		// If we can't create the reservation record, release the hold on the ticket
+		h.releaseReservation(input.EventID)
 
-	ticketResp, ok := result.Data.(ticketResponse)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse ticket response"})
-		return
-	}
-
-	// Create purchase with circuit breaker
-	purchase := &models.Purchase{
-		TicketID:     ticketResp.TicketID,
-		UserID:       input.UserID,
-		EventID:      input.EventID,
-		PurchaseDate: time.Now().UTC(),
-		Status:       "confirmed",
-	}
-
-	result = h.breaker.Execute(func() (interface{}, error) {
-		return h.repo.CreatePurchase(purchase)
-	})
-
-	if result.Error != nil {
 		if circuitbreaker.IsCircuitBreakerError(result.Error) {
 			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
 			c.JSON(status, gin.H{"error": msg})
@@ -224,42 +237,295 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 		return
 	}
 
-	createdPurchase, ok := result.Data.(*models.Purchase)
+	reservation, ok := result.Data.(*models.Reservation)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create purchase"})
+		h.releaseReservation(input.EventID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create reservation"})
 		return
 	}
 
-	// Publish messages with circuit breaker
+	// Schedule automatic expiration of reservation
+	go h.scheduleReservationExpiration(reservation.ID, input.EventID, reservation.ExpirationTime)
+
+	// Step 5: Publish reservation created event for analytics and audit
 	if h.broker != nil {
-		result = h.breaker.Execute(func() (interface{}, error) {
-			paymentMsg := struct {
-				TicketID int `json:"ticket_id"`
-				Amount   int `json:"amount"`
-			}{
-				TicketID: ticketResp.TicketID,
-				Amount:   int(eventDetails.Price * 100), // Convert to cents
-			}
-			if err := h.broker.Publish(paymentMsg, "topay"); err != nil {
-				return nil, err
-			}
+		// Use common message structure for the reservation created event
+		createdMsg := brokermsg.ReservationCreatedMessage{
+			ReservationID:  reservation.ID,
+			EventID:        input.EventID,
+			UserID:         input.UserID,
+			ExpirationTime: reservation.ExpirationTime.Unix(),
+		}
 
-			notificationMsg := struct {
-				RecipientEmail string `json:"recipient_email"`
-				TicketID       string `json:"ticket_id"`
-			}{
-				RecipientEmail: userDetails.Email,
-				TicketID:       ticketResp.TicketCode,
-			}
-			return nil, h.broker.Publish(notificationMsg, "email")
-		})
-
-		if result.Error != nil {
-			log.Printf("Warning: Failed to publish messages: %v", result.Error)
+		// Publish to reservation.created topic
+		err := h.broker.Publish(createdMsg, brokermsg.TopicReservationCreated)
+		if err != nil {
+			// Just log the error but don't fail the request
+			log.Printf("Warning: Failed to publish reservation created message: %v", err)
 		}
 	}
 
-	c.JSON(http.StatusCreated, createdPurchase)
+	// Step 6: Return reservation info to the client
+	response := struct {
+		ReservationID  int       `json:"reservation_id"`
+		EventID        int       `json:"event_id"`
+		Price          float64   `json:"price"`
+		UserID         int       `json:"user_id"`
+		Status         string    `json:"status"`
+		ExpirationTime time.Time `json:"expiration_time"`
+	}{
+		ReservationID:  reservation.ID,
+		EventID:        input.EventID,
+		Price:          eventDetails.Price,
+		UserID:         input.UserID,
+		Status:         reservation.Status,
+		ExpirationTime: reservation.ExpirationTime,
+	}
+
+	c.JSON(http.StatusCreated, response)
+}
+
+// CompleteReservation converts a reservation to a purchase
+func (h *Handler) CompleteReservation(c *gin.Context) {
+	log.Println("CompleteReservation called")
+	var input struct {
+		ReservationID int `json:"reservation_id" binding:"required,gt=0"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input: " + err.Error()})
+		return
+	}
+
+	// Step 1: Get the reservation to verify it exists and is still pending
+	result := h.breaker.Execute(func() (interface{}, error) {
+		reservation, err := h.reserveRepo.GetReservation(input.ReservationID)
+		if err != nil {
+			return nil, err
+		}
+		return reservation, nil
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusNotFound, gin.H{"error": "Reservation not found"})
+		return
+	}
+
+	reservation, ok := result.Data.(*models.Reservation)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get reservation"})
+		return
+	}
+
+	// Check if the reservation is still valid
+	if reservation.Status != "pending" {
+		c.JSON(http.StatusConflict, gin.H{"error": "Reservation is no longer valid"})
+		return
+	}
+
+	if reservation.ExpirationTime.Before(time.Now().UTC()) {
+		c.JSON(http.StatusConflict, gin.H{"error": "Reservation has expired"})
+		return
+	}
+
+	// Step 2: Convert reservation to a completed ticket in the event service
+	result = h.breaker.Execute(func() (interface{}, error) {
+		resp, err := h.httpClient.Post(
+			fmt.Sprintf("%s/v1/%d/complete-reservation", os.Getenv("EVENT_SERVICE_URL"), reservation.EventID),
+			"application/json",
+			nil,
+		)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("event service returned status %d: %s", resp.StatusCode, body)
+		}
+		return true, nil
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to complete reservation: %v", result.Error)})
+		return
+	}
+
+	// Step 3: Get event details to get the price
+	result = h.breaker.Execute(func() (interface{}, error) {
+		resp, err := h.httpClient.Get(fmt.Sprintf("%s/v1/%d", os.Getenv("EVENT_SERVICE_URL"), reservation.EventID))
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("event service returned status %d", resp.StatusCode)
+		}
+
+		var event struct {
+			Price float64 `json:"price"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to fetch event details: %v", result.Error)})
+		return
+	}
+
+	eventDetails, ok := result.Data.(struct {
+		Price float64 `json:"price"`
+	})
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse event response"})
+		return
+	}
+
+	// Step 4: Mark the reservation as completed in our database
+	err := h.reserveRepo.CompleteReservation(input.ReservationID)
+	if err != nil {
+		log.Printf("Warning: Failed to mark reservation as completed: %v", err)
+		// Continue anyway, as this is not critical for the user experience
+	}
+
+	// Step 5: Publish reservation completed message for payment processing
+	if h.broker != nil {
+		// Create reservation completed message using common message structure
+		completionMsg := brokermsg.ReservationCompletedMessage{
+			ReservationID: input.ReservationID,
+			EventID:       reservation.EventID,
+			UserID:        reservation.UserID,
+			Amount:        int(eventDetails.Price * 100), // Convert to cents
+		}
+
+		err := h.broker.Publish(completionMsg, brokermsg.TopicReservationCompleted)
+		if err != nil {
+			log.Printf("Warning: Failed to publish reservation completion message: %v", err)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":        "Reservation completed successfully",
+		"reservation_id": input.ReservationID,
+		"event_id":       reservation.EventID,
+		"user_id":        reservation.UserID,
+		"amount":         int(eventDetails.Price * 100), // Return amount in cents
+	})
+}
+
+// Helper method to release a reservation if something fails
+func (h *Handler) releaseReservation(eventID int) {
+	// Call the event service to release the reservation
+	h.breaker.Execute(func() (interface{}, error) {
+		resp, err := h.httpClient.Post(
+			fmt.Sprintf("%s/v1/%d/release-reservation", os.Getenv("EVENT_SERVICE_URL"), eventID),
+			"application/json",
+			nil,
+		)
+		if err != nil {
+			log.Printf("Error releasing reservation: %v", err)
+			return nil, err
+		}
+		defer resp.Body.Close()
+		return nil, nil
+	})
+}
+
+// Method to schedule automatic expiration of reservations
+func (h *Handler) scheduleReservationExpiration(reservationID int, eventID int, expirationTime time.Time) {
+	// Calculate time until expiration
+	duration := expirationTime.Sub(time.Now().UTC())
+	if duration < 0 {
+		// Already expired
+		return
+	}
+
+	log.Printf("Scheduling expiration for reservation %d in %.2f seconds", reservationID, duration.Seconds())
+
+	// Create a timer to expire the reservation
+	time.AfterFunc(duration, func() {
+		// Check if the reservation is still pending
+		reservation, err := h.reserveRepo.GetReservation(reservationID)
+		if err != nil {
+			log.Printf("Error getting reservation for expiration: %v", err)
+			return
+		}
+
+		// Only expire it if it's still pending
+		if reservation.Status == "pending" {
+			log.Printf("Expiring reservation %d for event %d", reservationID, eventID)
+
+			// Release the ticket in the event service
+			h.releaseReservation(eventID)
+
+			// Mark the reservation as expired
+			err = h.reserveRepo.ExpireReservation(reservationID)
+			if err != nil {
+				log.Printf("Error marking reservation as expired: %v", err)
+			}
+		}
+	})
+}
+
+// Cleanup job to find and release any expired reservations
+func (h *Handler) CleanupExpiredReservations(c *gin.Context) {
+	// Get all expired reservations
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return h.reserveRepo.GetExpiredReservations()
+	})
+
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get expired reservations"})
+		return
+	}
+
+	reservations, ok := result.Data.([]*models.Reservation)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse reservations"})
+		return
+	}
+
+	log.Printf("Found %d expired reservations to clean up", len(reservations))
+
+	// Process each expired reservation
+	processed := 0
+	for _, reservation := range reservations {
+		// Release the ticket in the event service
+		h.releaseReservation(reservation.EventID)
+
+		// Mark the reservation as expired
+		err := h.reserveRepo.ExpireReservation(reservation.ID)
+		if err != nil {
+			log.Printf("Error marking reservation %d as expired: %v", reservation.ID, err)
+			continue
+		}
+		processed++
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "Cleanup completed",
+		"processed": processed,
+		"total":     len(reservations),
+	})
 }
 
 func (h *Handler) handlePayment(amount int) (bool, error) {
