@@ -237,7 +237,7 @@ services:
       - payment-net
       - message-net
       volumes:
-        - ./src/services/payment/logs/service.log:/app/logs/service.log
+        - ./src/services/payment/logs/service.log:/app/logs
   notification-service:
     container_name: notification-service
     build:
@@ -280,7 +280,7 @@ services:
       - gateway1-net
       - message-net
     volumes:
-      - ./src/services/auth/logs/service.log:/app/logs/service.log
+      - ./src/services/auth/logs/service.log:/app/logs
   
   auth-2:
     build:
@@ -299,7 +299,7 @@ services:
       - gateway2-net
       - message-net
     volumes:
-      - ./src/services/auth/logs/service.log:/app/logs/service.log
+      - ./src/services/auth/logs/service.log:/app/logs
 
   auth-3:
     build:
@@ -315,7 +315,7 @@ services:
       - gateway3-net
       - message-net
     volumes:
-      - ./src/services/auth/logs/service.log:/app/logs/service.log
+      - ./src/services/auth/logs/service.log:/app/logs
 
   db-user:
     image: postgres:15
@@ -355,7 +355,7 @@ services:
       - gateway1-net
       - message-net  
     volumes:
-      - ./src/services/user-service/logs/service.log:/app/logs/service.log
+      - ./src/services/user-service/logs/service.log:/app/logs
   
   user-service-2:
     build: 
@@ -371,7 +371,7 @@ services:
       - db-network
       - gateway2-net
     volumes:
-      - ./src/services/user-service/logs/service.log:/app/logs/service.log
+      - ./src/services/user-service/logs/service.log:/app/logs
 
   user-service-3:
     build: 
@@ -388,7 +388,7 @@ services:
       - gateway3-net
       - message-net
     volumes:
-      - ./src/services/user-service/logs/service.log:/app/logs/service.log
+      - ./src/services/user-service/logs/service.log:/app/logs
 
   event-db:
     container_name: event-db
@@ -428,7 +428,7 @@ services:
       - gateway1-net
       - message-net  
     volumes:
-      - ./src/services/event-service/logs/service.log:/app/logs/service.log
+      - ./src/services/event-service/logs/service.log:/app/logs
   
 
   event-service-2:
@@ -452,7 +452,7 @@ services:
       - gateway2-net
       - message-net
     volumes:
-      - ./src/services/event-service/logs/service.log:/app/logs/service.log
+      - ./src/services/event-service/logs/service.log:/app/logs
 
   event-service-3:
     container_name: event-service-3
@@ -515,7 +515,7 @@ services:
       - gateway1-net 
       - message-net
     volumes:
-      - ./src/services/event-service/logs/service.log:/app/logs/service.log
+      - ./src/services/event-service/logs/service.log:/app/logs
 
   gateway1:
     build:
