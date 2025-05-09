@@ -164,3 +164,11 @@ func (b *Broker) Close() error {
 	}
 	return nil
 }
+
+// SetQoS sets the prefetch count for the channel
+func (b *Broker) SetQoS(prefetchCount int, prefetchSize int, global bool) error {
+	if err := b.ensureConnection(); err != nil {
+		return err
+	}
+	return b.channel.Qos(prefetchCount, prefetchSize, global)
+}

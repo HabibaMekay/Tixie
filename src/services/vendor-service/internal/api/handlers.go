@@ -1,24 +1,32 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
-    "encoding/json"
+	"vendor-service/internal/db/models"
+	"vendor-service/internal/db/repos"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
-    "log"
-	"bytes"
-	"vendor-service/internal/db/models"
-	"vendor-service/internal/db/repos"
+	circuitbreaker "tixie.local/common"
 )
 
 type Handler struct {
-	repo *repos.VendorRepository
+	repo                *repos.VendorRepository
+	eventServiceBreaker *circuitbreaker.CircuitBreaker
 }
 
 func NewHandler(repo *repos.VendorRepository) *Handler {
-	return &Handler{repo: repo}
+	return &Handler{
+		repo:                repo,
+		eventServiceBreaker: circuitbreaker.NewCircuitBreaker(circuitbreaker.DefaultSettings("event-service-client")),
+	}
 }
 
 func hashPassword(password string) (string, error) {
@@ -153,7 +161,6 @@ func (h *Handler) AuthenticateVendor(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-
 func (h *Handler) CreateVendorEvent(c *gin.Context) {
 	vendorIDStr := c.Param("id")
 	vendorID, err := strconv.Atoi(vendorIDStr)
@@ -161,20 +168,43 @@ func (h *Handler) CreateVendorEvent(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid vendor ID"})
 		return
 	}
+
 	var event models.Event
 	if err := c.ShouldBindJSON(&event); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event input"})
 		return
 	}
-	event.VendorID = vendorID 
+	event.VendorID = vendorID
+
 	jsonData, err := json.Marshal(event)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error marshalling event data"})
 		return
 	}
-	resp, err := http.Post("http://event-service:8080/v1", "application/json", bytes.NewBuffer(jsonData))
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		log.Println("Error calling event service:", err)
+
+	var resp *http.Response
+	err = h.eventServiceBreaker.Execute(func() error {
+		var err error
+		resp, err = http.Post("http://event-service:8080/v1", "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusCreated {
+			return fmt.Errorf("event service returned status: %d", resp.StatusCode)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		if errors.Is(err, circuitbreaker.ErrCircuitBreakerOpen) || errors.Is(err, circuitbreaker.ErrTooManyRequests) {
+			log.Printf("Circuit breaker error when calling event service: %v", err)
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Event service is temporarily unavailable"})
+			return
+		}
+		log.Printf("Error calling event service: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create event"})
 		return
 	}

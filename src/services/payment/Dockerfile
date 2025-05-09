@@ -6,6 +6,7 @@ WORKDIR /src/payment
 # Copy only what's needed for dependency resolution
 COPY payment/go.mod payment/go.sum ./
 COPY broker /src/broker
+COPY common /src/common
 
 # Let Go resolve and cache dependencies
 RUN go mod download

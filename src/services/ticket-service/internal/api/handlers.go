@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	circuitbreaker "tixie.local/common"
 )
 
 var upgrader = websocket.Upgrader{
@@ -33,6 +34,7 @@ type ClientConnection struct {
 type Handler struct {
 	repo       *repos.TicketRepository
 	httpClient *http.Client
+	breaker    *circuitbreaker.Breaker
 }
 
 // NewHandler creates a new Handler with dependencies.
@@ -42,6 +44,7 @@ func NewHandler(repo *repos.TicketRepository) *Handler {
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
+		breaker: circuitbreaker.NewBreaker("ticket-service"),
 	}
 }
 
@@ -53,12 +56,22 @@ func (h *Handler) GetTicketByID(c *gin.Context) {
 		return
 	}
 
-	ticket, err := h.repo.GetTicketByID(ticketID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return h.repo.GetTicketByID(ticketID)
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + result.Error.Error()})
 		return
 	}
-	if ticket == nil {
+
+	ticket, ok := result.Data.(*models.Ticket)
+	if !ok || ticket == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Ticket not found"})
 		return
 	}
@@ -74,9 +87,23 @@ func (h *Handler) GetTicketsByEventID(c *gin.Context) {
 		return
 	}
 
-	tickets, err := h.repo.GetTicketsByEventID(eventID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return h.repo.GetTicketsByEventID(eventID)
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + result.Error.Error()})
+		return
+	}
+
+	tickets, ok := result.Data.([]models.Ticket)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}
 
@@ -118,13 +145,27 @@ func (h *Handler) CreateTicket(c *gin.Context) {
 		Status:     "active",
 	}
 
-	createdTicket, err := h.repo.CreateTicket(ticket)
-	if err != nil {
-		if strings.Contains(err.Error(), "duplicate key") {
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return h.repo.CreateTicket(ticket)
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		if strings.Contains(result.Error.Error(), "duplicate key") {
 			c.JSON(http.StatusConflict, gin.H{"error": "Ticket code already exists"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + result.Error.Error()})
+		return
+	}
+
+	createdTicket, ok := result.Data.(*models.Ticket)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}
 
@@ -152,19 +193,45 @@ func (h *Handler) UpdateTicketStatus(c *gin.Context) {
 		return
 	}
 
-	ticket, err := h.repo.GetTicketByID(ticketID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
+	// Check if ticket exists
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return h.repo.GetTicketByID(ticketID)
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + result.Error.Error()})
 		return
 	}
-	if ticket == nil {
+
+	ticket, ok := result.Data.(*models.Ticket)
+	if !ok || ticket == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Ticket not found"})
 		return
 	}
 
-	updatedTicket, err := h.repo.UpdateTicketStatus(ticketID, input.Status)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
+	// Update ticket status
+	result = h.breaker.Execute(func() (interface{}, error) {
+		return h.repo.UpdateTicketStatus(ticketID, input.Status)
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + result.Error.Error()})
+		return
+	}
+
+	updatedTicket, ok := result.Data.(*models.Ticket)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}
 
@@ -191,17 +258,28 @@ func (h *Handler) UpdateTicketStatus(c *gin.Context) {
 func (h *Handler) GetTicketByCode(c *gin.Context) {
 	log.Println("GetTicketByCode called")
 	ticketCode := c.Param("ticket_code")
-	log.Printf("Raw ticketCode: %q", ticketCode) // Debug the raw ticketCode
+	log.Printf("Raw ticketCode: %q", ticketCode)
 
-	// Normalize ticketCode: trim whitespace and convert to lowercase
 	ticketCode = strings.TrimSpace(strings.ToLower(ticketCode))
-
 	log.Printf("Normalized ticketCode: %s", ticketCode)
 
-	ticket, err := h.repo.GetTicketByCode(ticketCode)
-	if err != nil {
-		log.Printf("Database error for ticketCode %s: %v", ticketCode, err)
-		c.JSON(http.StatusNotFound, gin.H{"error": "Tiiiicket not found"})
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return h.repo.GetTicketByCode(ticketCode)
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusNotFound, gin.H{"error": "Ticket not found"})
+		return
+	}
+
+	ticket, ok := result.Data.(*models.Ticket)
+	if !ok || ticket == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Ticket not found"})
 		return
 	}
 
@@ -214,7 +292,6 @@ func (h *Handler) GetTicketByCode(c *gin.Context) {
 }
 
 func (h *Handler) validateEvent(eventID int) error {
-	//url := fmt.Sprintf("%s/v1/%d", os.Getenv("EVENT_SERVICE_1"), eventID)
 	url := fmt.Sprintf("http://event-service-1:8080/v1/%d", eventID)
 	resp, err := h.httpClient.Get(url)
 	if err != nil {
@@ -230,7 +307,6 @@ func (h *Handler) validateEvent(eventID int) error {
 }
 
 func (h *Handler) validateUser(userID int) error {
-	//url := fmt.Sprintf("%s/v1/%d", os.Getenv("USER_SERVICE_1"), userID)
 	url := fmt.Sprintf("http://user-service-1:8081/v1/%d", userID)
 	resp, err := h.httpClient.Get(url)
 	if err != nil {
@@ -249,9 +325,23 @@ func (h *Handler) validateUser(userID int) error {
 func (h *Handler) GetEventsWithTickets(c *gin.Context) {
 	log.Println("GetEventsWithTickets called")
 
-	events, err := h.repo.GetEventsWithTickets()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get events: " + err.Error()})
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return h.repo.GetEventsWithTickets()
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + result.Error.Error()})
+		return
+	}
+
+	events, ok := result.Data.([]repos.EventWithTickets)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}
 
@@ -344,47 +434,27 @@ func (h *Handler) GetEventsWithTicketsWS(c *gin.Context) {
 }
 
 func (h *Handler) sendEventData(client *ClientConnection) error {
-	events, err := h.repo.GetEventsWithTickets()
-	if err != nil {
-		return fmt.Errorf("failed to get events: %v", err)
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return h.repo.GetEventsWithTickets()
+	})
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to get events: %v", result.Error)
 	}
 
-	type EventResponse struct {
-		EventID     int    `json:"event_id"`
-		EventName   string `json:"event_name"`
-		TicketCount int    `json:"ticket_count"`
+	events, ok := result.Data.([]repos.EventWithTickets)
+	if !ok {
+		return fmt.Errorf("invalid response type from repository")
 	}
-
-	var enrichedEvents []EventResponse
-	for _, event := range events {
-		url := fmt.Sprintf("http://event-service-1:8080/v1/%d", event.EventID)
-		resp, err := h.httpClient.Get(url)
-
-		eventResponse := EventResponse{
-			EventID:     event.EventID,
-			EventName:   "",
-			TicketCount: event.TicketCount,
-		}
-
-		if err == nil && resp.StatusCode == http.StatusOK {
-			var eventDetails struct {
-				Name string `json:"name"`
-			}
-			if err := json.NewDecoder(resp.Body).Decode(&eventDetails); err == nil {
-				eventResponse.EventName = eventDetails.Name
-			}
-			resp.Body.Close()
-		}
-
-		enrichedEvents = append(enrichedEvents, eventResponse)
-	}
-
-	response := gin.H{"events": enrichedEvents}
 
 	client.mu.Lock()
 	defer client.mu.Unlock()
 
-	return client.conn.WriteJSON(response)
+	if err := client.conn.WriteJSON(gin.H{"events": events}); err != nil {
+		return fmt.Errorf("failed to write to websocket: %v", err)
+	}
+
+	return nil
 }
 
 // GetTicketsByEventIDWS handles WebSocket connections for real-time ticket updates for a specific event
@@ -424,9 +494,17 @@ func (h *Handler) GetTicketsByEventIDWS(c *gin.Context) {
 }
 
 func (h *Handler) sendTicketData(client *ClientConnection, eventID int) error {
-	tickets, err := h.repo.GetTicketsByEventID(eventID)
-	if err != nil {
-		return fmt.Errorf("failed to get tickets: %v", err)
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return h.repo.GetTicketsByEventID(eventID)
+	})
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to get tickets: %v", result.Error)
+	}
+
+	tickets, ok := result.Data.([]models.Ticket)
+	if !ok {
+		return fmt.Errorf("invalid response type from repository")
 	}
 
 	client.mu.Lock()

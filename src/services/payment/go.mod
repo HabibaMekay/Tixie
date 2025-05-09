@@ -7,6 +7,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/stripe/stripe-go v70.15.0+incompatible
 	tixie.local/broker v0.0.0
+	tixie.local/common v0.0.0
 )
 
 require (
@@ -16,3 +17,4 @@ require (
 )
 
 replace tixie.local/broker => ../broker
+replace tixie.local/common => ../common

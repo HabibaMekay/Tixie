@@ -7,6 +7,7 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/lib/pq v1.10.9
 	tixie.local/broker v0.0.0
+	tixie.local/common v0.0.0
 )
 
 require (
@@ -40,3 +41,4 @@ require (
 )
 
 replace tixie.local/broker => ../broker
+replace tixie.local/common => ../common

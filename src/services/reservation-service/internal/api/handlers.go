@@ -16,12 +16,47 @@ import (
 
 	"github.com/gin-gonic/gin"
 	brokerPkg "tixie.local/broker"
+	circuitbreaker "tixie.local/common"
 )
+
+type eventDetails struct {
+	Price float64 `json:"price"`
+}
+
+type userDetails struct {
+	Email string `json:"email"`
+}
+
+type ticketResponse struct {
+	TicketID   int    `json:"ticket_id"`
+	UserID     int    `json:"user_id"`
+	TicketCode string `json:"ticket_code"`
+}
+
+type paymentResponse struct {
+	ClientSecret   string `json:"client_secret"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+type qrResponse struct {
+	Symbol []struct {
+		Data  string `json:"data"`
+		Error string `json:"error"`
+	} `json:"symbol"`
+}
+
+type ticketVerificationResponse struct {
+	TicketID int    `json:"ticket_id"`
+	EventID  int    `json:"event_id"`
+	UserID   int    `json:"user_id"`
+	Status   string `json:"status"`
+}
 
 type Handler struct {
 	repo       *repos.PurchaseRepository
 	httpClient *http.Client
 	broker     *brokerPkg.Broker
+	breaker    *circuitbreaker.Breaker
 }
 
 func NewHandler(repo *repos.PurchaseRepository) *Handler {
@@ -35,7 +70,8 @@ func NewHandler(repo *repos.PurchaseRepository) *Handler {
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
-		broker: broker,
+		broker:  broker,
+		breaker: circuitbreaker.NewBreaker("reservation-service"),
 	}
 }
 
@@ -50,68 +86,122 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 		return
 	}
 
-	// Fetch event details to get price so we can log it as if we're actually logging it
-	eventResp, err := h.httpClient.Get(fmt.Sprintf("%s/v1/%d", os.Getenv("EVENT_SERVICE_URL"), input.EventID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to fetch event details: %v", err)})
+	// Fetch event details with circuit breaker
+	result := h.breaker.Execute(func() (interface{}, error) {
+		resp, err := h.httpClient.Get(fmt.Sprintf("%s/v1/%d", os.Getenv("EVENT_SERVICE_URL"), input.EventID))
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("event service returned status %d", resp.StatusCode)
+		}
+
+		var details eventDetails
+		if err := json.NewDecoder(resp.Body).Decode(&details); err != nil {
+			return nil, err
+		}
+		return details, nil
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to fetch event details: %v", result.Error)})
 		return
 	}
-	defer eventResp.Body.Close()
 
-	var eventDetails struct {
-		Price float64 `json:"price"`
-	}
-	if err := json.NewDecoder(eventResp.Body).Decode(&eventDetails); err != nil {
+	eventDetails, ok := result.Data.(eventDetails)
+	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse event response"})
 		return
 	}
 
-	// Fetching user details to get email to send the QR code to at the end
-	userResp, err := h.httpClient.Get(fmt.Sprintf("%s/v1/%d", os.Getenv("USER_SERVICE_URL"), input.UserID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to fetch user details: %v", err)})
+	// Fetch user details with circuit breaker
+	result = h.breaker.Execute(func() (interface{}, error) {
+		resp, err := h.httpClient.Get(fmt.Sprintf("%s/v1/%d", os.Getenv("USER_SERVICE_URL"), input.UserID))
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("user service returned status %d", resp.StatusCode)
+		}
+
+		var details userDetails
+		if err := json.NewDecoder(resp.Body).Decode(&details); err != nil {
+			return nil, err
+		}
+		return details, nil
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to fetch user details: %v", result.Error)})
 		return
 	}
-	defer userResp.Body.Close()
 
-	var userDetails struct {
-		Email string `json:"email"`
-	}
-	if err := json.NewDecoder(userResp.Body).Decode(&userDetails); err != nil {
+	userDetails, ok := result.Data.(userDetails)
+	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse user response"})
 		return
 	}
 
-	ticketReq := struct {
-		EventID int `json:"event_id"`
-		UserID  int `json:"user_id"`
-	}{EventID: input.EventID, UserID: input.UserID}
-	ticketReqBody, err := json.Marshal(ticketReq)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to marshal ticket request: %v", err)})
-		return
-	}
-	resp, err := h.httpClient.Post(os.Getenv("TICKET_SERVICE_URL")+"/v1", "application/json", bytes.NewBuffer(ticketReqBody))
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		status := http.StatusInternalServerError
-		if resp != nil {
-			defer resp.Body.Close()
-			status = resp.StatusCode
+	// Create ticket with circuit breaker
+	result = h.breaker.Execute(func() (interface{}, error) {
+		ticketReq := struct {
+			EventID int `json:"event_id"`
+			UserID  int `json:"user_id"`
+		}{EventID: input.EventID, UserID: input.UserID}
+
+		ticketReqBody, err := json.Marshal(ticketReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal ticket request: %v", err)
 		}
-		c.JSON(status, gin.H{"error": fmt.Sprintf("Ticket service error: %v", err)})
+
+		resp, err := h.httpClient.Post(os.Getenv("TICKET_SERVICE_URL")+"/v1", "application/json", bytes.NewBuffer(ticketReqBody))
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusCreated {
+			return nil, fmt.Errorf("ticket service returned status %d", resp.StatusCode)
+		}
+
+		var ticket ticketResponse
+		if err := json.NewDecoder(resp.Body).Decode(&ticket); err != nil {
+			return nil, err
+		}
+		return ticket, nil
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create ticket: %v", result.Error)})
 		return
 	}
 
-	var ticketResp struct {
-		TicketID   int    `json:"ticket_id"`
-		UserID     int    `json:"user_id"`
-		TicketCode string `json:"ticket_code"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&ticketResp); err != nil {
+	ticketResp, ok := result.Data.(ticketResponse)
+	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse ticket response"})
 		return
 	}
 
+	// Create purchase with circuit breaker
 	purchase := &models.Purchase{
 		TicketID:     ticketResp.TicketID,
 		UserID:       input.UserID,
@@ -120,38 +210,52 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 		Status:       "confirmed",
 	}
 
-	createdPurchase, err := h.repo.CreatePurchase(purchase)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
+	result = h.breaker.Execute(func() (interface{}, error) {
+		return h.repo.CreatePurchase(purchase)
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + result.Error.Error()})
 		return
 	}
 
-	// Publish payment message
-	if h.broker != nil {
-		paymentMsg := struct {
-			TicketID int `json:"ticket_id"`
-			Amount   int `json:"amount"`
-		}{
-			TicketID: ticketResp.TicketID,
-			Amount:   1000, // This should be fetched from the event service, for now this is fine
-		}
-		if err := h.broker.Publish(paymentMsg, "topay"); err != nil {
-			log.Printf("Warning: Failed to publish payment message: %v", err)
-		} else {
-			log.Printf("Published payment message for ticket %d", ticketResp.TicketID)
-		}
+	createdPurchase, ok := result.Data.(*models.Purchase)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create purchase"})
+		return
+	}
 
-		notificationMsg := struct {
-			RecipientEmail string `json:"recipient_email"`
-			TicketID       string `json:"ticket_id"`
-		}{
-			RecipientEmail: "user@example.com",
-			TicketID:       ticketResp.TicketCode,
-		}
-		if err := h.broker.Publish(notificationMsg, "email"); err != nil {
-			log.Printf("Warning: Failed to publish notification message: %v", err)
-		} else {
-			log.Printf("Published notification message for ticket %s", ticketResp.TicketCode)
+	// Publish messages with circuit breaker
+	if h.broker != nil {
+		result = h.breaker.Execute(func() (interface{}, error) {
+			paymentMsg := struct {
+				TicketID int `json:"ticket_id"`
+				Amount   int `json:"amount"`
+			}{
+				TicketID: ticketResp.TicketID,
+				Amount:   int(eventDetails.Price * 100), // Convert to cents
+			}
+			if err := h.broker.Publish(paymentMsg, "topay"); err != nil {
+				return nil, err
+			}
+
+			notificationMsg := struct {
+				RecipientEmail string `json:"recipient_email"`
+				TicketID       string `json:"ticket_id"`
+			}{
+				RecipientEmail: userDetails.Email,
+				TicketID:       ticketResp.TicketCode,
+			}
+			return nil, h.broker.Publish(notificationMsg, "email")
+		})
+
+		if result.Error != nil {
+			log.Printf("Warning: Failed to publish messages: %v", result.Error)
 		}
 	}
 
@@ -165,48 +269,61 @@ func (h *Handler) handlePayment(amount int) (bool, error) {
 		return false, fmt.Errorf("invalid amount: must be greater than zero")
 	}
 
-	payload := map[string]interface{}{
-		"amount": amount,
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return false, fmt.Errorf("failed to marshal payload: %v", err)
-	}
-	//os.Getenv("PAYMENT_SERVICE_URL")+
-	req, err := http.NewRequest("POST", "http://payment:8088/create-payment-intent", bytes.NewBuffer(body))
-	if err != nil {
-		return false, fmt.Errorf("failed to create payment request: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := h.httpClient.Do(req)
-	if err != nil {
-		return false, fmt.Errorf("payment service error: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err = io.ReadAll(resp.Body)
-	if err != nil {
-		return false, fmt.Errorf("failed to read response: %v", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		var errorMsg map[string]interface{}
-		if err := json.Unmarshal(body, &errorMsg); err != nil {
-			return false, fmt.Errorf("payment service returned status %d", resp.StatusCode)
+	result := h.breaker.Execute(func() (interface{}, error) {
+		payload := map[string]interface{}{
+			"amount": amount,
 		}
-		return false, fmt.Errorf("payment service returned status %d: %v", resp.StatusCode, errorMsg)
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal payload: %v", err)
+		}
+
+		req, err := http.NewRequest("POST", "http://payment:8088/create-payment-intent", bytes.NewBuffer(body))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create payment request: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := h.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("payment service error: %v", err)
+		}
+		defer resp.Body.Close()
+
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response: %v", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			var errorMsg map[string]interface{}
+			if err := json.Unmarshal(body, &errorMsg); err != nil {
+				return nil, fmt.Errorf("payment service returned status %d", resp.StatusCode)
+			}
+			return nil, fmt.Errorf("payment service returned status %d: %v", resp.StatusCode, errorMsg)
+		}
+
+		var paymentResp paymentResponse
+		if err := json.Unmarshal(body, &paymentResp); err != nil {
+			return nil, fmt.Errorf("failed to parse payment response: %v", err)
+		}
+		if paymentResp.ClientSecret == "" || paymentResp.IdempotencyKey == "" {
+			return nil, fmt.Errorf("missing fields in payment response")
+		}
+
+		return paymentResp, nil
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			return false, result.Error
+		}
+		return false, fmt.Errorf("payment failed: %v", result.Error)
 	}
 
-	var paymentResp struct {
-		ClientSecret   string `json:"client_secret"`
-		IdempotencyKey string `json:"idempotency_key"`
-	}
-	if err := json.Unmarshal(body, &paymentResp); err != nil {
-		return false, fmt.Errorf("failed to parse payment response: %v", err)
-	}
-	if paymentResp.ClientSecret == "" || paymentResp.IdempotencyKey == "" {
-		return false, fmt.Errorf("missing fields in payment response")
+	paymentResp, ok := result.Data.(paymentResponse)
+	if !ok {
+		return false, fmt.Errorf("invalid payment response type")
 	}
 
 	log.Printf("Payment successful: client_secret=%s, idempotency_key=%s\n", paymentResp.ClientSecret, paymentResp.IdempotencyKey)
@@ -227,98 +344,114 @@ func (h *Handler) VerifyTicket(c *gin.Context) {
 	file, _, err := c.Request.FormFile("file")
 	if err == nil {
 		defer file.Close()
-		// Send QR code image to goqr.me
-		body := &bytes.Buffer{}
-		writer := multipart.NewWriter(body)
-		part, err := writer.CreateFormFile("file", "qr.png")
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create form file: " + err.Error()})
-			return
-		}
-		if _, err := io.Copy(part, file); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to copy file: " + err.Error()})
-			return
-		}
-		writer.Close()
 
-		req, err := http.NewRequest("POST", "https://api.qrserver.com/v1/read-qr-code/", body)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create QR request: " + err.Error()})
-			return
-		}
-		req.Header.Set("Content-Type", writer.FormDataContentType())
+		result := h.breaker.Execute(func() (interface{}, error) {
+			// Send QR code image to goqr.me
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			part, err := writer.CreateFormFile("file", "qr.png")
+			if err != nil {
+				return nil, fmt.Errorf("failed to create form file: %v", err)
+			}
+			if _, err := io.Copy(part, file); err != nil {
+				return nil, fmt.Errorf("failed to copy file: %v", err)
+			}
+			writer.Close()
 
-		resp, err := h.httpClient.Do(req)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "QR service error: " + err.Error()})
-			return
-		}
-		defer resp.Body.Close()
+			req, err := http.NewRequest("POST", "https://api.qrserver.com/v1/read-qr-code/", body)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create QR request: %v", err)
+			}
+			req.Header.Set("Content-Type", writer.FormDataContentType())
 
-		var qrResp []struct {
-			Symbol []struct {
-				Data  string `json:"data"`
-				Error string `json:"error"`
-			} `json:"symbol"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&qrResp); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse QR response: " + err.Error()})
+			resp, err := h.httpClient.Do(req)
+			if err != nil {
+				return nil, fmt.Errorf("QR service error: %v", err)
+			}
+			defer resp.Body.Close()
+
+			var qrResp []qrResponse
+			if err := json.NewDecoder(resp.Body).Decode(&qrResp); err != nil {
+				return nil, fmt.Errorf("failed to parse QR response: %v", err)
+			}
+			if len(qrResp) == 0 || len(qrResp[0].Symbol) == 0 {
+				return nil, fmt.Errorf("invalid QR code")
+			}
+			if qrResp[0].Symbol[0].Error != "" {
+				return nil, fmt.Errorf("QR code error: %v", qrResp[0].Symbol[0].Error)
+			}
+			return qrResp[0].Symbol[0].Data, nil
+		})
+
+		if result.Error != nil {
+			if circuitbreaker.IsCircuitBreakerError(result.Error) {
+				status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+				c.JSON(status, gin.H{"error": msg})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 			return
 		}
-		if len(qrResp) == 0 || len(qrResp[0].Symbol) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid QR code"})
+
+		var ok bool
+		qrData, ok = result.Data.(string)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid QR response type"})
 			return
 		}
-		if qrResp[0].Symbol[0].Error != "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "QR code error: " + qrResp[0].Symbol[0].Error})
-			return
-		}
-		qrData = qrResp[0].Symbol[0].Data
 	} else if url := c.Request.FormValue("url"); url != "" {
-		// Send QR code URL to goqr.me
-		body := &bytes.Buffer{}
-		writer := multipart.NewWriter(body)
-		if err := writer.WriteField("file", "@url:"+url); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write URL field: " + err.Error()})
-			return
-		}
-		writer.Close()
+		result := h.breaker.Execute(func() (interface{}, error) {
+			// Send QR code URL to goqr.me
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			if err := writer.WriteField("file", "@url:"+url); err != nil {
+				return nil, fmt.Errorf("failed to write URL field: %v", err)
+			}
+			writer.Close()
 
-		req, err := http.NewRequest("POST", "https://api.qrserver.com/v1/read-qr-code/", body)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create QR request: " + err.Error()})
-			return
-		}
-		req.Header.Set("Content-Type", writer.FormDataContentType())
+			req, err := http.NewRequest("POST", "https://api.qrserver.com/v1/read-qr-code/", body)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create QR request: %v", err)
+			}
+			req.Header.Set("Content-Type", writer.FormDataContentType())
 
-		resp, err := h.httpClient.Do(req)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "QR service error: " + err.Error()})
-			return
-		}
-		defer resp.Body.Close()
+			resp, err := h.httpClient.Do(req)
+			if err != nil {
+				return nil, fmt.Errorf("QR service error: %v", err)
+			}
+			defer resp.Body.Close()
 
-		var qrResp []struct {
-			Symbol []struct {
-				Data  string `json:"data"`
-				Error string `json:"error"`
-			} `json:"symbol"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&qrResp); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse QR response: " + err.Error()})
+			var qrResp []qrResponse
+			if err := json.NewDecoder(resp.Body).Decode(&qrResp); err != nil {
+				return nil, fmt.Errorf("failed to parse QR response: %v", err)
+			}
+			if len(qrResp) == 0 || len(qrResp[0].Symbol) == 0 {
+				return nil, fmt.Errorf("invalid QR code")
+			}
+			if qrResp[0].Symbol[0].Error != "" {
+				return nil, fmt.Errorf("QR code error: %v", qrResp[0].Symbol[0].Error)
+			}
+			return qrResp[0].Symbol[0].Data, nil
+		})
+
+		if result.Error != nil {
+			if circuitbreaker.IsCircuitBreakerError(result.Error) {
+				status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+				c.JSON(status, gin.H{"error": msg})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 			return
 		}
-		if len(qrResp) == 0 || len(qrResp[0].Symbol) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid QR code"})
+
+		var ok bool
+		qrData, ok = result.Data.(string)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid QR response type"})
 			return
 		}
-		if qrResp[0].Symbol[0].Error != "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "QR code error: " + qrResp[0].Symbol[0].Error})
-			return
-		}
-		qrData = qrResp[0].Symbol[0].Data
 	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing file or URL"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No file or URL provided"})
 		return
 	}
 
@@ -332,32 +465,47 @@ func (h *Handler) VerifyTicket(c *gin.Context) {
 		return
 	}
 
-	// Query ticket service to verify ticket
-	url := fmt.Sprintf("%s/v1/verify/%s", os.Getenv("TICKET_SERVICE_URL"), ticketCode)
-	resp, err := h.httpClient.Get(url)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ticket service error: " + err.Error()})
-		return
-	}
-	defer resp.Body.Close()
+	// Query ticket service to verify ticket with circuit breaker
+	var result circuitbreaker.Result
+	result = h.breaker.Execute(func() (interface{}, error) {
+		url := fmt.Sprintf("%s/v1/verify/%s", os.Getenv("TICKET_SERVICE_URL"), ticketCode)
+		resp, err := h.httpClient.Get(url)
+		if err != nil {
+			return nil, fmt.Errorf("ticket service error: %v", err)
+		}
+		defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"valid": false, "error": "Ticket not found or inactive"})
+		if resp.StatusCode != http.StatusOK {
+			if resp.StatusCode == http.StatusNotFound {
+				return nil, fmt.Errorf("ticket not found or inactive")
+			}
+			return nil, fmt.Errorf("ticket service returned status %d", resp.StatusCode)
+		}
+
+		var ticket ticketVerificationResponse
+		if err := json.NewDecoder(resp.Body).Decode(&ticket); err != nil {
+			return nil, fmt.Errorf("failed to parse ticket response: %v", err)
+		}
+		return ticket, nil
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Ticket service returned status %d", resp.StatusCode)})
+		if strings.Contains(result.Error.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"valid": false, "error": result.Error.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 		return
 	}
 
-	var ticket struct {
-		TicketID int    `json:"ticket_id"`
-		EventID  int    `json:"event_id"`
-		UserID   int    `json:"user_id"`
-		Status   string `json:"status"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&ticket); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse ticket response: " + err.Error()})
+	ticket, ok := result.Data.(ticketVerificationResponse)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid ticket response type"})
 		return
 	}
 

@@ -7,17 +7,22 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
+	circuitbreaker "tixie.local/common"
 
 	"user-service/internal/db/models"
 	"user-service/internal/db/repos"
 )
 
 type Handler struct {
-	repo *repos.UserRepository
+	repo    *repos.UserRepository
+	breaker *circuitbreaker.Breaker
 }
 
 func NewHandler(repo *repos.UserRepository) *Handler {
-	return &Handler{repo: repo}
+	return &Handler{
+		repo:    repo,
+		breaker: circuitbreaker.NewBreaker("user-service"),
+	}
 }
 
 func hashPassword(password string) (string, error) {
@@ -42,9 +47,17 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	}
 	user.Password = hashedPassword
 
-	err = h.repo.CreateUser(user)
-	if err != nil {
-		if pgErr, ok := err.(*pq.Error); ok && pgErr.Code == "23505" {
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return nil, h.repo.CreateUser(user)
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		if pgErr, ok := result.Error.(*pq.Error); ok && pgErr.Code == "23505" {
 			c.JSON(http.StatusConflict, gin.H{"error": "Username or Email already exists"})
 			return
 		}
@@ -56,11 +69,26 @@ func (h *Handler) CreateUser(c *gin.Context) {
 }
 
 func (h *Handler) GetUsers(c *gin.Context) {
-	users, err := h.repo.GetAllUsers()
-	if err != nil {
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return h.repo.GetAllUsers()
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve users"})
 		return
 	}
+
+	users, ok := result.Data.([]models.User)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
 	c.JSON(http.StatusOK, users)
 }
 
@@ -71,8 +99,27 @@ func (h *Handler) GetUserByID(c *gin.Context) {
 		return
 	}
 
-	user, err := h.repo.GetUserByID(id)
-	if err != nil {
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return h.repo.GetUserByID(id)
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	user, ok := result.Data.(models.User)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	if user.ID == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
@@ -102,9 +149,17 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		updatedUser.Password = hashedPassword
 	}
 
-	err = h.repo.UpdateUser(id, updatedUser)
-	if err != nil {
-		if pgErr, ok := err.(*pq.Error); ok && pgErr.Code == "23505" {
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return nil, h.repo.UpdateUser(id, updatedUser)
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		if pgErr, ok := result.Error.(*pq.Error); ok && pgErr.Code == "23505" {
 			c.JSON(http.StatusConflict, gin.H{"error": "Username or Email already exists"})
 			return
 		}
@@ -122,8 +177,16 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		return
 	}
 
-	err = h.repo.DeleteUser(id)
-	if err != nil {
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return nil, h.repo.DeleteUser(id)
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
 		return
 	}
@@ -138,8 +201,22 @@ func (h *Handler) AuthenticateUser(c *gin.Context) {
 		return
 	}
 
-	valid, err := h.repo.CheckCredentials(creds.Username, creds.Password)
-	if err != nil {
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return h.repo.CheckCredentials(creds.Username, creds.Password)
+	})
+
+	if result.Error != nil {
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	valid, ok := result.Data.(bool)
+	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}

@@ -8,8 +8,13 @@ import (
 
 func SetupRouter() *mux.Router {
 	r := mux.NewRouter()
-	r.HandleFunc("/create-payment-intent", handlers.CreatePaymentIntent).Methods("POST")
-	// r.HandleFunc("/webhook", handlers.StripeWebhook).Methods("POST")
-	r.HandleFunc("/simulate-webhook", handlers.SimulateWebhook).Methods("POST")
+
+	paymentHandler := handlers.NewPaymentHandler()
+	webhookHandler := handlers.NewWebhookHandler()
+
+	r.HandleFunc("/create-payment-intent", paymentHandler.CreatePaymentIntent).Methods("POST")
+	// r.HandleFunc("/webhook", webhookHandler.StripeWebhook).Methods("POST")
+	r.HandleFunc("/simulate-webhook", webhookHandler.SimulateWebhook).Methods("POST")
+
 	return r
 }

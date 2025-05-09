@@ -8,7 +8,10 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/lib/pq v1.10.9
+	tixie.local/common v0.0.0
 )
+
+
 
 require (
 	github.com/bytedance/sonic v1.11.6 // indirect
@@ -38,3 +41,4 @@ require (
 	google.golang.org/protobuf v1.34.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+replace tixie.local/common => ../common

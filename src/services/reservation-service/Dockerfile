@@ -6,6 +6,7 @@ WORKDIR /src/reservation-service
 # Copy mod files
 COPY reservation-service/go.mod reservation-service/go.sum ./
 COPY broker /src/broker
+COPY common /src/common
 
 # Let Go resolve and cache dependencies
 RUN go mod download

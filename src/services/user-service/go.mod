@@ -9,7 +9,10 @@ require github.com/lib/pq v1.10.9
 require (
 	github.com/gin-gonic/gin v1.10.0
 	golang.org/x/crypto v0.37.0
+	tixie.local/common v0.0.0
 )
+
+replace tixie.local/common => ../common
 
 require (
 	github.com/bytedance/sonic v1.11.6 // indirect

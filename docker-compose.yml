@@ -43,8 +43,8 @@ services:
       - db-network
   ticket-service-1:
     build:
-      context: ./src/services/ticket-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: ticket-service/Dockerfile
     container_name: ticket-service-1
     ports:
       - "9082:8082"
@@ -69,8 +69,8 @@ services:
 
   ticket-service-2:
     build:
-      context: ./src/services/ticket-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: ticket-service/Dockerfile
     container_name: ticket-service-2
     depends_on:
       ticket-db:
@@ -89,8 +89,8 @@ services:
       - message-net
   ticket-service-3:
     build:
-      context: ./src/services/ticket-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: ticket-service/Dockerfile
     container_name: ticket-service-3
     depends_on:
       ticket-db:
@@ -235,7 +235,8 @@ services:
       - MAILERSEND_EMAIL=${MAILERSEND_EMAIL}
       - RABBITMQ_URL=${RABBITMQ_URL}
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
       interval: 10s
       timeout: 5s
@@ -308,8 +309,8 @@ services:
       
   user-service-1:
     build: 
-      context: ./src/services/user-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: user-service/Dockerfile
     container_name: user-service-1
     ports:
       - "2341:8081"
@@ -324,8 +325,8 @@ services:
       - message-net  
   user-service-2:
     build: 
-      context: ./src/services/user-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: user-service/Dockerfile
     container_name: user-service-2
     env_file:
       - .env
@@ -337,8 +338,8 @@ services:
       - gateway2-net
   user-service-3:
     build: 
-      context: ./src/services/user-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: user-service/Dockerfile
     container_name: user-service-3
     env_file:
       - .env
@@ -369,8 +370,8 @@ services:
   event-service-1:
     container_name: event-service-1
     build: 
-      context: ./src/services/event-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: event-service/Dockerfile
     depends_on:
       event-db:
         condition: service_healthy
@@ -390,8 +391,8 @@ services:
   event-service-2:
     container_name: event-service-2
     build: 
-      context: ./src/services/event-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: event-service/Dockerfile
     depends_on:
       event-db:
         condition: service_healthy
@@ -410,8 +411,8 @@ services:
   event-service-3:
     container_name: event-service-3
     build: 
-      context: ./src/services/event-service
-      dockerfile: Dockerfile
+      context: ./src/services
+      dockerfile: event-service/Dockerfile
     depends_on:
       event-db:
         condition: service_healthy
@@ -450,8 +451,8 @@ services:
   vendor-service:
     container_name: vendor-service
     build: 
-        context: ./src/services/vendor-service
-        dockerfile: Dockerfile
+        context: ./src/services
+        dockerfile: vendor-service/Dockerfile
     depends_on:
        vendor-db:
            condition: service_healthy
