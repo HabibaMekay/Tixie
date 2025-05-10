@@ -51,10 +51,8 @@ func (h *EventHandler) CreateEvent(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
-
-	// Set default reservation timeout if not specified
 	if event.ReservationTimeout <= 0 {
-		event.ReservationTimeout = 600 // Default 10 minutes
+		event.ReservationTimeout = 600
 	}
 
 	if err := h.Repo.CreateEvent(event); err != nil {

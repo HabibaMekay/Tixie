@@ -176,15 +176,13 @@ app.use((req, res, next) => {
 
 
 const vendorProtectedRoutes = [
-  { path: '/api/event/v1/:id/events', methods: ['POST'] }
+  { path: '/api/event/v1/events', methods: ['POST'] }
 ];
 
 const isVendor = (req, res, next) => {
-  // Exclude /v1 and exact matches like /v1/, /v1
   if (req.path === '/v1' || req.path === '/v1/') {
     return next();
   }
-
   const needsVendorAccess = vendorProtectedRoutes.some(route => {
     const pathPattern = route.path.replace(/:\w+/g, '[^/]+');
     const regex = new RegExp(`^${pathPattern}`);
@@ -195,7 +193,6 @@ const isVendor = (req, res, next) => {
     return next();
   }
 
-  // Apply vendor role check
   if (!req.user || req.user.role !== 'vendor') {
     return res.status(403).json({
       error: 'Forbidden',

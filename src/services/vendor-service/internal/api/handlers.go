@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"vendor-service/config"
 	"vendor-service/internal/db/models"
 	"vendor-service/internal/db/repos"
 
@@ -161,10 +162,19 @@ func (h *Handler) AuthenticateVendor(c *gin.Context) {
 }
 
 func (h *Handler) CreateVendorEvent(c *gin.Context) {
-	vendorIDStr := c.Param("id")
-	vendorID, err := strconv.Atoi(vendorIDStr)
+	vendorName := c.GetHeader("username")
+	if vendorName == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing vendor information"})
+		return
+	}
+
+	vendorID, err := h.repo.GetVendorIDByName(vendorName)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid vendor ID"})
+		if err.Error() == "vendor not found" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Vendor not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get vendor ID"})
 		return
 	}
 
@@ -184,7 +194,7 @@ func (h *Handler) CreateVendorEvent(c *gin.Context) {
 	var resp *http.Response
 	result := h.eventServiceBreaker.Execute(func() (interface{}, error) {
 		var err error
-		resp, err = http.Post("http://event-service:8080/v1", "application/json", bytes.NewBuffer(jsonData))
+		resp, err = http.Post(config.AppConfig.EventServiceURL+"/v1", "application/json", bytes.NewBuffer(jsonData))
 		if err != nil {
 			return nil, err
 		}

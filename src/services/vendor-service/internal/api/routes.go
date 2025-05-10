@@ -17,6 +17,6 @@ func SetupRoutes(r *gin.Engine, repo *repos.VendorRepository) {
 		vendors.PUT("/:id", handler.UpdateVendor)
 		vendors.DELETE("/:id", handler.DeleteVendor)
 		vendors.POST("/authenticate", handler.AuthenticateVendor)
-		vendors.POST("/:id/events", handler.CreateVendorEvent)
+		vendors.POST("/events", handler.CreateVendorEvent)
 	}
 }

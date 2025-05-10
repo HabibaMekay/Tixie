@@ -270,7 +270,7 @@ services:
     environment:
       - USER_SERVICE_URL=${USER_SERVICE_1}
       - JWT_SECRET=${JWT_SECRET}
-      - VENDOR_SERVICE_URL=${VENDOR_SERVICE}
+      - VENDOR_SERVICE_URL=${VENDOR_SERVICE_1}
     env_file:
       - ./.env
     restart: unless-stopped
@@ -287,9 +287,9 @@ services:
       dockerfile: ./cmd/Dockerfile
     container_name: auth-2
     environment:
-      - USER_SERVICE_URL=${USER_SERVICE_1}
-      - VENDOR_SERVICE_URL=${VENDOR_SERVICE}
+      - USER_SERVICE_URL=${USER_SERVICE_2}
       - JWT_SECRET=${JWT_SECRET}
+      - VENDOR_SERVICE_URL=${VENDOR_SERVICE_2}
     restart: unless-stopped
     networks:
       - db-network
@@ -304,9 +304,9 @@ services:
       dockerfile: ./cmd/Dockerfile
     container_name: auth-3
     environment:
-      - USER_SERVICE_URL=${USER_SERVICE_1}
+      - USER_SERVICE_URL=${USER_SERVICE_3}
       - JWT_SECRET=${JWT_SECRET}
-      - VENDOR_SERVICE_URL=${VENDOR_SERVICE}
+      - VENDOR_SERVICE_URL=${VENDOR_SERVICE_3}
     restart: unless-stopped
     networks:
       - db-network
@@ -488,8 +488,8 @@ services:
     networks:
       - db-network
 
-  vendor-service:
-    container_name: vendor-service
+  vendor-service-1:
+    container_name: vendor-service-1
     build: 
         context: ./src/services
         dockerfile: vendor-service/Dockerfile
@@ -504,15 +504,61 @@ services:
       - DB_PASSWORD_VENDOR=${DB_PASSWORD_VENDOR}
       - DB_NAME_VENDOR=${DB_NAME_VENDOR}
       - DB_SSLMODE_VENDOR=${DB_SSLMODE_VENDOR}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_1}
     networks:
       - db-network
       - gateway1-net
-      - gateway2-net
-      - gateway3-net 
+      - message-net
+    volumes:
+      - ./src/services/event-service/logs/service.log:/app/logs
+  
+  vendor-service-2:
+    container_name: vendor-service-2
+    build: 
+        context: ./src/services
+        dockerfile: vendor-service/Dockerfile
+    depends_on:
+       vendor-db:
+           condition: service_healthy
+    environment:
+      - DOCKER_COMPOSE=true
+      - DB_VENDOR_HOST=${DB_VENDOR_HOST}
+      - DB_PORT_VENDOR=${DB_PORT_VENDOR}
+      - DB_VENDOR_VENDOR=${DB_VENDOR_VENDOR}
+      - DB_PASSWORD_VENDOR=${DB_PASSWORD_VENDOR}
+      - DB_NAME_VENDOR=${DB_NAME_VENDOR}
+      - DB_SSLMODE_VENDOR=${DB_SSLMODE_VENDOR}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_2}
+    networks:
+      - db-network
+      - gateway2-net 
       - message-net
     volumes:
       - ./src/services/event-service/logs/service.log:/app/logs
 
+  vendor-service-3:
+    container_name: vendor-service-3
+    build: 
+        context: ./src/services
+        dockerfile: vendor-service/Dockerfile
+    depends_on:
+       vendor-db:
+           condition: service_healthy
+    environment:
+      - DOCKER_COMPOSE=true
+      - DB_VENDOR_HOST=${DB_VENDOR_HOST}
+      - DB_PORT_VENDOR=${DB_PORT_VENDOR}
+      - DB_VENDOR_VENDOR=${DB_VENDOR_VENDOR}
+      - DB_PASSWORD_VENDOR=${DB_PASSWORD_VENDOR}
+      - DB_NAME_VENDOR=${DB_NAME_VENDOR}
+      - DB_SSLMODE_VENDOR=${DB_SSLMODE_VENDOR}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_3}
+    networks:
+      - db-network
+      - gateway3-net 
+      - message-net
+    volumes:
+      - ./src/services/event-service/logs/service.log:/app/logs
   gateway1:
     build:
       context: .
@@ -526,7 +572,7 @@ services:
       - AUTH_SERVICE_URL=${AUTH_SERVICE_1}
       - EVENT_SERVICE_URL=${EVENT_SERVICE_1}
       - RESERVE_SERVICE_URL=${RESERVE_SERVICE_1}
-      - VENDOR_SERVICE_URL=${VENDOR_SERVICE}
+      - VENDOR_SERVICE_URL=${VENDOR_SERVICE_1}
       - JWT_SECRET=${JWT_SECRET}
     depends_on:
       - redis
@@ -552,7 +598,7 @@ services:
       - EVENT_SERVICE_URL=${EVENT_SERVICE_2}
       - RESERVE_SERVICE_URL=${RESERVE_SERVICE_2}
       - JWT_SECRET=${JWT_SECRET}
-      - VENDOR_SERVICE_URL=${VENDOR_SERVICE}
+      - VENDOR_SERVICE_URL=${VENDOR_SERVICE_2}
     depends_on:
       - redis
       - ticket-service-2
@@ -577,7 +623,7 @@ services:
       - EVENT_SERVICE_URL=${EVENT_SERVICE_3}
       - RESERVE_SERVICE_URL=${RESERVE_SERVICE_3}
       - JWT_SECRET=${JWT_SECRET}
-      - VENDOR_SERVICE_URL=${VENDOR_SERVICE}
+      - VENDOR_SERVICE_URL=${VENDOR_SERVICE_3}
     depends_on:
       - redis
       - ticket-service-3

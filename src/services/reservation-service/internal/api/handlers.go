@@ -88,8 +88,6 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input: " + err.Error()})
 		return
 	}
-
-	// Step 1: Get event details (including reservation timeout)
 	result := h.breaker.Execute(func() (interface{}, error) {
 		resp, err := h.httpClient.Get(fmt.Sprintf("%s/v1/%d", os.Getenv("EVENT_SERVICE_URL"), input.EventID))
 		if err != nil {

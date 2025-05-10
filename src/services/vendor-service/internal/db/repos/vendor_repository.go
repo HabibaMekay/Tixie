@@ -132,3 +132,23 @@ func (r *VendorRepository) CheckCredentials(username, password string) (bool, er
 	}
 	return result.Data.(bool), nil
 }
+
+func (r *VendorRepository) GetVendorIDByName(vendorName string) (int, error) {
+	var id int
+	result := r.breaker.Execute(func() (interface{}, error) {
+		query := `SELECT id FROM vendors WHERE vendor_name = $1`
+		err := r.DB.QueryRow(query, vendorName).Scan(&id)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return nil, errors.New("vendor not found")
+			}
+			return nil, err
+		}
+		return id, nil
+	})
+
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.Data.(int), nil
+}
