@@ -40,9 +40,9 @@ func AuthenticateUser(creds models.Credentials) (bool, error) {
 
 	var endpoint string
 	if role == "vendor" {
-		endpoint = fmt.Sprintf("%s/vendor/v1/authenticate", config.VendorServiceURL)
+		endpoint = fmt.Sprintf("%s/v1/authenticate", config.VendorServiceURL)
 	} else {
-		endpoint = fmt.Sprintf("%s/user/v1/authenticate", config.UserServiceURL)
+		endpoint = fmt.Sprintf("%s/v1/authenticate", config.UserServiceURL)
 	}
 
 	resp, err := http.Post(endpoint, "application/json", bytes.NewBuffer(data))

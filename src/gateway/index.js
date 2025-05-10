@@ -39,13 +39,32 @@ const wsProxy = httpProxy.createProxyServer({
 
 const retryOptions = {
   maxRetries: 3,
-  initialDelay: 100,
+  initialDelay: 1000,
   maxDelay: 10000,
   shouldRetry: (error) => {
-    return error.code === 'ECONNREFUSED' || 
-           error.code === 'ETIMEDOUT' || 
-           (error.statusCode && error.statusCode >= 500); // we're checking if we even have an error status code. Without it, it would sometiems fail because there is no status code to read.
-  } // this ensures we do not retry errors that are related to misinputs like 404 but server timeouts, or database errors
+    console.error('Retry check error:', error);
+    
+    if (error.code === 'ECONNREFUSED' || 
+        error.code === 'ETIMEDOUT' || 
+        error.code === 'ECONNRESET' ||
+        error.code === 'ENOTFOUND') {
+      return true;
+    }
+    
+    if (error.statusCode) {
+      return error.statusCode >= 500 || error.statusCode === 429;
+    }
+    
+    if (error.message && (
+        error.message.includes('socket hang up') ||
+        error.message.includes('connect ETIMEDOUT') ||
+        error.message.includes('connect ECONNREFUSED')
+    )) {
+      return true;
+    }
+    
+    return false;
+  }
 };
 
 proxy.on( 'proxyReq', ( proxyReq, req, res, options ) => {
@@ -93,10 +112,7 @@ proxy.on('error', (err, req, res) => {
   console.error(`[Proxy Error] ${req.method} ${req.path}:`, err);
   
   if (!res.headersSent) {
-    res.status(502).json({
-      error: 'Bad Gateway',
-      message: 'The server encountered a temporary error and could not complete your request'
-    });
+    throw err;
   }
 });
 
@@ -145,12 +161,12 @@ app.use('/api', rateLimiter);
 // Apply JWT verification only to protected endpoints
 app.use((req, res, next) => {
   const openPaths = [
-    '/api/user', // user signup     
+    '/api/user/v1', // user signup     
     '/api/auth/login', //login duhh
     '/api/auth/oauth2-login', //logging in using oauth2
     '/api/auth/callback', //oauth callback
     '/api/test',
-    '/api/vendor/v1',
+    '/api/vendor/v1/signup',
     '/api/vendor/v1/authenticate'
   ];
   const isOpen = openPaths.some(path => req.path.startsWith(path) && (req.method === 'POST' || req.method === 'GET'));
@@ -193,11 +209,14 @@ const isVendor = (req, res, next) => {
 app.use(isVendor);
 
 const proxyWithRetry = (req, res, target) => {
+  console.log(`Attempting to proxy request to ${target}`);
+  
   retryWithBackoff(
     () => {
       return new Promise((resolve, reject) => {
         proxy.web(req, res, { target }, err => {
           if (err) {
+            console.error(`Proxy error for ${target}:`, err);
             reject(err);
           } else {
             resolve();
@@ -244,7 +263,7 @@ app.use('/api/reserve', (req, res) => {
 
 app.use('/api/vendor', (req, res) => {
   req.url = req.url.replace(/^\/api\/vendor/, '');
-  proxyWithRetry(req, res, targetReserveService);
+  proxyWithRetry(req, res, targetVendorService);
 });
 
 app.get('/api/test', (req, res) => {

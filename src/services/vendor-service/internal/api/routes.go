@@ -11,7 +11,7 @@ func SetupRoutes(r *gin.Engine, repo *repos.VendorRepository) {
 
 	vendors := r.Group("/v1")
 	{
-		vendors.POST("", handler.CreateVendor)
+		vendors.POST("/signup", handler.CreateVendor)
 		vendors.GET("", handler.GetVendors)
 		vendors.GET("/:id", handler.GetVendorByID)
 		vendors.PUT("/:id", handler.UpdateVendor)

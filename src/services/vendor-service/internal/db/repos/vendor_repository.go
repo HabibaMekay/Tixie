@@ -24,12 +24,8 @@ func NewVendorRepository(db *sql.DB) *VendorRepository {
 
 func (r *VendorRepository) CreateVendor(vendor models.Vendor) error {
 	result := r.breaker.Execute(func() (interface{}, error) {
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(vendor.Password), bcrypt.DefaultCost)
-		if err != nil {
-			return nil, err
-		}
 		query := `INSERT INTO vendors (vendor_name, email, password) VALUES ($1, $2, $3)`
-		_, err = r.DB.Exec(query, vendor.VendorName, vendor.Email, string(hashedPassword))
+		_, err := r.DB.Exec(query, vendor.VendorName, vendor.Email, string(vendor.Password))
 		return nil, err
 	})
 	return result.Error
@@ -111,11 +107,11 @@ func (r *VendorRepository) DeleteVendor(id int) error {
 	return result.Error
 }
 
-func (r *VendorRepository) CheckCredentials(vendorName, password string) (bool, error) {
+func (r *VendorRepository) CheckCredentials(username, password string) (bool, error) {
 	result := r.breaker.Execute(func() (interface{}, error) {
 		var storedPassword string
 		query := `SELECT password FROM vendors WHERE vendor_name = $1`
-		err := r.DB.QueryRow(query, vendorName).Scan(&storedPassword)
+		err := r.DB.QueryRow(query, username).Scan(&storedPassword)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return false, nil

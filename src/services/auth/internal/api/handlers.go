@@ -50,7 +50,6 @@ func Login(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid role, must be 'user' or 'vendor'"})
 		return
 	}
-
 	valid, err := repos.AuthenticateUser(creds)
 	if err != nil {
 		logger.Println("Internal error happened during login request")

@@ -24,6 +24,6 @@ FROM alpine:latest
 WORKDIR /app
 COPY --from=build /src/vendor/vendor-service .
 
-EXPOSE 8081
+EXPOSE 9060
 
 CMD ["./vendor-service"]

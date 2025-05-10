@@ -1,8 +1,8 @@
 package models
 
 type Vendor struct {
-    ID        int    `json:"id"`
-    VendorName string `json:"vendor_name"`  
-    Email     string `json:"email"`
-    Password  string `json:"password"` 
+	ID         int    `json:"id"`
+	VendorName string `json:"username"`
+	Email      string `json:"email"`
+	Password   string `json:"password"`
 }

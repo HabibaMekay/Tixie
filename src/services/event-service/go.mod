@@ -38,5 +38,3 @@ require (
 )
 
 replace tixie.local/common => ../common
-
-

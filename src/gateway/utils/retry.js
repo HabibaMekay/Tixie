@@ -9,13 +9,17 @@ async function retryWithBackoff(fn, options = {}) {
   
     while (attempt <= maxRetries) {
       try {
+        console.log(`Retry attempt ${attempt + 1}/${maxRetries + 1}`);
         return await fn();
       } catch (error) {
         lastError = error;
         attempt++;
         
+        console.error(`Attempt ${attempt} failed:`, error);
+        
         // If we've reached max retries or shouldn't retry this error anymore
         if (attempt > maxRetries || !shouldRetry(error)) {
+          console.log(`Not retrying: ${attempt > maxRetries ? 'max retries reached' : 'error not retryable'}`);
           throw error;
         }
         
@@ -25,6 +29,7 @@ async function retryWithBackoff(fn, options = {}) {
           initialDelay * Math.pow(2, attempt - 1) * (0.5 + Math.random() * 0.5)
         );
         
+        console.log(`Waiting ${delay}ms before next retry...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }

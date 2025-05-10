@@ -271,8 +271,6 @@ services:
       - USER_SERVICE_URL=${USER_SERVICE_1}
       - JWT_SECRET=${JWT_SECRET}
       - VENDOR_SERVICE_URL=${VENDOR_SERVICE}
-    ports:
-      - "8080:8080"
     env_file:
       - ./.env
     restart: unless-stopped
@@ -293,8 +291,6 @@ services:
       - VENDOR_SERVICE_URL=${VENDOR_SERVICE}
       - JWT_SECRET=${JWT_SECRET}
     restart: unless-stopped
-    ports:
-      - "5459:8080"
     networks:
       - db-network
       - gateway2-net
@@ -327,8 +323,6 @@ services:
       - POSTGRES_DB=${DB_NAME_USER}
     env_file:
       - .env
-    ports:
-      - "5420:5432"
     volumes:
       - ./src/services/user-service/internal/db/init:/docker-entrypoint-initdb.d
     healthcheck:
@@ -484,8 +478,6 @@ services:
       - POSTGRES_DB=${DB_NAME_VENDOR}
     env_file:
       - .env
-    ports:
-      - "5432:5432"  
     volumes:
       - ./src/services/vendor-service/internal/db/init:/docker-entrypoint-initdb.d
     healthcheck:
@@ -513,8 +505,10 @@ services:
       - DB_NAME_VENDOR=${DB_NAME_VENDOR}
       - DB_SSLMODE_VENDOR=${DB_SSLMODE_VENDOR}
     networks:
-      -  db-network
-      - gateway1-net 
+      - db-network
+      - gateway1-net
+      - gateway2-net
+      - gateway3-net 
       - message-net
     volumes:
       - ./src/services/event-service/logs/service.log:/app/logs
