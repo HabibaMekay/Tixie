@@ -163,8 +163,12 @@ const vendorProtectedRoutes = [
   { path: '/api/event/v1/:id/events', methods: ['POST'] }
 ];
 
-// Middleware to check if user is a vendor or not 
 const isVendor = (req, res, next) => {
+  // Exclude /v1 and exact matches like /v1/, /v1
+  if (req.path === '/v1' || req.path === '/v1/') {
+    return next();
+  }
+
   const needsVendorAccess = vendorProtectedRoutes.some(route => {
     const pathPattern = route.path.replace(/:\w+/g, '[^/]+');
     const regex = new RegExp(`^${pathPattern}`);
@@ -175,35 +179,17 @@ const isVendor = (req, res, next) => {
     return next();
   }
 
-  // Log for debugging purposes
-  console.log(`[VENDOR-CHECK] Checking vendor access for ${req.method} ${req.path}`);
-  
-  if (!req.user) {
-    console.warn(`[VENDOR-CHECK] No user object found in request for ${req.path}`);
-    return res.status(403).json({
-      error: 'Forbidden',
-      message: 'Authentication required'
-    });
-  }
-  
-  if (!req.user.role) {
-    console.warn(`[VENDOR-CHECK] User ${req.user.username || 'unknown'} has no role specified in JWT`);
-    return res.status(403).json({
-      error: 'Forbidden',
-      message: 'Missing role information'
-    });
-  }
-
-  if (req.user.role !== 'vendor') {
-    console.warn(`[VENDOR-CHECK] User ${req.user.username || 'unknown'} with role ${req.user.role} attempted to access vendor endpoint`);
+  // Apply vendor role check
+  if (!req.user || req.user.role !== 'vendor') {
     return res.status(403).json({
       error: 'Forbidden',
       message: 'This route is only accessible to vendors'
     });
   }
-  console.log(`[VENDOR-CHECK] Vendor access granted for ${req.user.username || 'unknown'}`);
+
   next();
 };
+
 app.use(isVendor);
 
 const proxyWithRetry = (req, res, target) => {
