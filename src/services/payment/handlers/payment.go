@@ -11,16 +11,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/stripe/stripe-go"
 	"github.com/stripe/stripe-go/paymentintent"
-	"tixie.local/common/circuitbreaker"
+	"tixie.local/common"
 )
 
 type PaymentHandler struct {
-	breaker *circuitbreaker.CircuitBreaker
+	breaker *common.Breaker
 }
 
 func NewPaymentHandler() *PaymentHandler {
 	return &PaymentHandler{
-		breaker: circuitbreaker.NewCircuitBreaker(circuitbreaker.DefaultSettings("payment-service")),
+		breaker: common.NewBreaker("payment-service"),
 	}
 }
 
@@ -83,8 +83,8 @@ func (h *PaymentHandler) CreatePaymentIntent(w http.ResponseWriter, r *http.Requ
 
 	if result.Error != nil {
 		logger.Printf("Error from breaker: %v", result.Error)
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
-			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+		if common.IsCircuitBreakerError(result.Error) {
+			status, msg := common.HandleCircuitBreakerError(result.Error)
 			http.Error(w, msg, status)
 			return
 		}

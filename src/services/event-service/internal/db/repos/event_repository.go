@@ -5,18 +5,18 @@ import (
 	"event-service/internal/db/models"
 	"fmt"
 
-	"tixie.local/common/circuitbreaker"
+	"tixie.local/common"
 )
 
 type EventRepository struct {
 	DB      *sql.DB
-	breaker *circuitbreaker.CircuitBreaker
+	breaker *common.Breaker
 }
 
 func NewEventRepository(db *sql.DB) *EventRepository {
 	return &EventRepository{
 		DB:      db,
-		breaker: circuitbreaker.NewCircuitBreaker(circuitbreaker.DefaultSettings("event-repository")),
+		breaker: common.NewBreaker("event-repository"),
 	}
 }
 

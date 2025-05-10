@@ -16,8 +16,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	brokerPkg "tixie.local/broker"
+	"tixie.local/common"
 	brokermsg "tixie.local/common/brokermsg"
-	"tixie.local/common/circuitbreaker"
 )
 
 type eventDetails struct {
@@ -58,7 +58,7 @@ type Handler struct {
 	reserveRepo  *repos.ReservationRepository
 	httpClient   *http.Client
 	broker       *brokerPkg.Broker
-	breaker      *circuitbreaker.CircuitBreaker
+	breaker      *common.Breaker
 }
 
 func NewHandler(purchaseRepo *repos.PurchaseRepository, reserveRepo *repos.ReservationRepository) *Handler {
@@ -74,7 +74,7 @@ func NewHandler(purchaseRepo *repos.PurchaseRepository, reserveRepo *repos.Reser
 			Timeout: 5 * time.Second,
 		},
 		broker:  broker,
-		breaker: circuitbreaker.NewCircuitBreaker(circuitbreaker.DefaultSettings("reservation-service")),
+		breaker: common.NewBreaker("reservation-service"),
 	}
 }
 
@@ -114,8 +114,8 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 	})
 
 	if result.Error != nil {
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
-			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+		if common.IsCircuitBreakerError(result.Error) {
+			status, msg := common.HandleCircuitBreakerError(result.Error)
 			c.JSON(status, gin.H{"error": msg})
 			return
 		}
@@ -173,8 +173,8 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 	})
 
 	if result.Error != nil {
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
-			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+		if common.IsCircuitBreakerError(result.Error) {
+			status, msg := common.HandleCircuitBreakerError(result.Error)
 			c.JSON(status, gin.H{"error": msg})
 			return
 		}
@@ -202,8 +202,8 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 		// If we can't get user details, we should release the reservation
 		h.releaseReservation(input.EventID)
 
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
-			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+		if common.IsCircuitBreakerError(result.Error) {
+			status, msg := common.HandleCircuitBreakerError(result.Error)
 			c.JSON(status, gin.H{"error": msg})
 			return
 		}
@@ -228,8 +228,8 @@ func (h *Handler) ReserveTicket(c *gin.Context) {
 		// If we can't create the reservation record, release the hold on the ticket
 		h.releaseReservation(input.EventID)
 
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
-			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+		if common.IsCircuitBreakerError(result.Error) {
+			status, msg := common.HandleCircuitBreakerError(result.Error)
 			c.JSON(status, gin.H{"error": msg})
 			return
 		}
@@ -306,8 +306,8 @@ func (h *Handler) CompleteReservation(c *gin.Context) {
 	})
 
 	if result.Error != nil {
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
-			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+		if common.IsCircuitBreakerError(result.Error) {
+			status, msg := common.HandleCircuitBreakerError(result.Error)
 			c.JSON(status, gin.H{"error": msg})
 			return
 		}
@@ -352,8 +352,8 @@ func (h *Handler) CompleteReservation(c *gin.Context) {
 	})
 
 	if result.Error != nil {
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
-			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+		if common.IsCircuitBreakerError(result.Error) {
+			status, msg := common.HandleCircuitBreakerError(result.Error)
 			c.JSON(status, gin.H{"error": msg})
 			return
 		}
@@ -383,8 +383,8 @@ func (h *Handler) CompleteReservation(c *gin.Context) {
 	})
 
 	if result.Error != nil {
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
-			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+		if common.IsCircuitBreakerError(result.Error) {
+			status, msg := common.HandleCircuitBreakerError(result.Error)
 			c.JSON(status, gin.H{"error": msg})
 			return
 		}
@@ -581,7 +581,7 @@ func (h *Handler) handlePayment(amount int) (bool, error) {
 	})
 
 	if result.Error != nil {
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+		if common.IsCircuitBreakerError(result.Error) {
 			return false, result.Error
 		}
 		return false, fmt.Errorf("payment failed: %v", result.Error)
@@ -650,8 +650,8 @@ func (h *Handler) VerifyTicket(c *gin.Context) {
 		})
 
 		if result.Error != nil {
-			if circuitbreaker.IsCircuitBreakerError(result.Error) {
-				status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			if common.IsCircuitBreakerError(result.Error) {
+				status, msg := common.HandleCircuitBreakerError(result.Error)
 				c.JSON(status, gin.H{"error": msg})
 				return
 			}
@@ -701,8 +701,8 @@ func (h *Handler) VerifyTicket(c *gin.Context) {
 		})
 
 		if result.Error != nil {
-			if circuitbreaker.IsCircuitBreakerError(result.Error) {
-				status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			if common.IsCircuitBreakerError(result.Error) {
+				status, msg := common.HandleCircuitBreakerError(result.Error)
 				c.JSON(status, gin.H{"error": msg})
 				return
 			}
@@ -732,7 +732,7 @@ func (h *Handler) VerifyTicket(c *gin.Context) {
 	}
 
 	// Query ticket service to verify ticket with circuit breaker
-	var result circuitbreaker.Result
+	var result common.Result
 	result = h.breaker.Execute(func() (interface{}, error) {
 		url := fmt.Sprintf("%s/v1/verify/%s", os.Getenv("TICKET_SERVICE_URL"), ticketCode)
 		resp, err := h.httpClient.Get(url)
@@ -756,8 +756,8 @@ func (h *Handler) VerifyTicket(c *gin.Context) {
 	})
 
 	if result.Error != nil {
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
-			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+		if common.IsCircuitBreakerError(result.Error) {
+			status, msg := common.HandleCircuitBreakerError(result.Error)
 			c.JSON(status, gin.H{"error": msg})
 			return
 		}

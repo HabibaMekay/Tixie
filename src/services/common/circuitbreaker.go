@@ -1,10 +1,28 @@
-package circuitbreaker
+package common
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"net/http"
 	"sync"
 	"time"
 )
+
+// Circuit breaker errors
+var (
+	ErrTooManyRequests    = errors.New("too many requests")
+	ErrCircuitBreakerOpen = errors.New("circuit breaker is open")
+)
+
+// Result represents a result from a service call
+type Result struct {
+	Data  interface{}
+	Error error
+}
+
+// ServiceCall represents a function that can be protected by a circuit breaker
+type ServiceCall func() (interface{}, error)
 
 // State represents the current state of the circuit breaker
 type State int
@@ -14,6 +32,29 @@ const (
 	StateOpen
 	StateHalfOpen
 )
+
+func (s State) String() string {
+	switch s {
+	case StateClosed:
+		return "closed"
+	case StateOpen:
+		return "open"
+	case StateHalfOpen:
+		return "half-open"
+	default:
+		return fmt.Sprintf("unknown state: %d", s)
+	}
+}
+
+// Settings holds the settings for the circuit breaker
+type Settings struct {
+	Name          string
+	MaxRequests   uint32
+	Interval      time.Duration
+	Timeout       time.Duration
+	ReadyToTrip   func(counts Counts) bool
+	OnStateChange func(name string, from State, to State)
+}
 
 // Counts holds the counts of requests and their results
 type Counts struct {
@@ -39,28 +80,10 @@ type CircuitBreaker struct {
 	expiry     time.Time
 }
 
-// Settings holds the settings for the circuit breaker
-type Settings struct {
-	Name          string
-	MaxRequests   uint32
-	Interval      time.Duration
-	Timeout       time.Duration
-	ReadyToTrip   func(counts Counts) bool
-	OnStateChange func(name string, from State, to State)
+// Breaker provides a convenient way to use circuit breakers in services
+type Breaker struct {
+	cb *CircuitBreaker
 }
-
-// Result represents the result of circuit breaker execution
-type Result struct {
-	Data  interface{}
-	Error error
-}
-
-var (
-	// ErrTooManyRequests is returned when the CB state is half open and the requests count is over the cb maxRequests
-	ErrTooManyRequests = errors.New("too many requests")
-	// ErrCircuitBreakerOpen is returned when the CB state is open
-	ErrCircuitBreakerOpen = errors.New("circuit breaker is open")
-)
 
 // DefaultSettings returns the default settings for a circuit breaker
 func DefaultSettings(name string) *Settings {
@@ -100,14 +123,31 @@ func NewCircuitBreaker(settings *Settings) *CircuitBreaker {
 	return cb
 }
 
-// Execute runs the given request if the circuit breaker accepts it
-func (cb *CircuitBreaker) Execute(req func() (interface{}, error)) Result {
+// NewBreaker creates a new Breaker with the given name and default settings
+func NewBreaker(name string) *Breaker {
+	settings := DefaultSettings(name)
+	settings.OnStateChange = func(name string, from State, to State) {
+		fmt.Printf("Circuit Breaker '%s' state changed from %s to %s\n", name, from, to)
+	}
+	return &Breaker{
+		cb: NewCircuitBreaker(settings),
+	}
+}
+
+// NewBreakerWithSettings creates a new Breaker with custom settings
+func NewBreakerWithSettings(settings *Settings) *Breaker {
+	return &Breaker{
+		cb: NewCircuitBreaker(settings),
+	}
+}
+
+// Execute method for CircuitBreaker to be used by the Breaker wrapper
+func (cb *CircuitBreaker) Execute(fn func() error) error {
 	generation, err := cb.beforeRequest()
 	if err != nil {
-		return Result{Error: err}
+		return err
 	}
 
-	var data interface{}
 	defer func() {
 		if e := recover(); e != nil {
 			cb.afterRequest(generation, false)
@@ -115,11 +155,12 @@ func (cb *CircuitBreaker) Execute(req func() (interface{}, error)) Result {
 		}
 	}()
 
-	data, err = req()
+	err = fn()
 	cb.afterRequest(generation, err == nil)
-	return Result{Data: data, Error: err}
+	return err
 }
 
+// beforeRequest prepares the circuit breaker for a request
 func (cb *CircuitBreaker) beforeRequest() (uint64, error) {
 	cb.mutex.Lock()
 	defer cb.mutex.Unlock()
@@ -152,6 +193,7 @@ func (cb *CircuitBreaker) beforeRequest() (uint64, error) {
 	}
 }
 
+// afterRequest updates the circuit breaker state after a request
 func (cb *CircuitBreaker) afterRequest(generation uint64, success bool) {
 	cb.mutex.Lock()
 	defer cb.mutex.Unlock()
@@ -167,6 +209,7 @@ func (cb *CircuitBreaker) afterRequest(generation uint64, success bool) {
 	}
 }
 
+// onSuccess handles a successful request
 func (cb *CircuitBreaker) onSuccess(now time.Time) {
 	switch cb.state {
 	case StateClosed:
@@ -180,10 +223,10 @@ func (cb *CircuitBreaker) onSuccess(now time.Time) {
 		if cb.counts.Successes >= cb.maxRequests {
 			cb.setState(StateClosed, now)
 		}
-
 	}
 }
 
+// onFailure handles a failed request
 func (cb *CircuitBreaker) onFailure(now time.Time) {
 	switch cb.state {
 	case StateClosed:
@@ -198,6 +241,7 @@ func (cb *CircuitBreaker) onFailure(now time.Time) {
 	}
 }
 
+// setState changes the state of the circuit breaker
 func (cb *CircuitBreaker) setState(state State, now time.Time) {
 	if cb.state == state {
 		return
@@ -207,41 +251,66 @@ func (cb *CircuitBreaker) setState(state State, now time.Time) {
 	cb.state = state
 	cb.generation++
 
-	if cb.state == StateOpen {
+	if state == StateOpen {
 		cb.expiry = now.Add(cb.timeout)
 	}
 
 	if cb.onStateChange != nil {
 		cb.onStateChange(cb.name, prev, state)
 	}
-
-	// Reset counts
-	cb.counts = Counts{}
 }
 
-// State returns the current state of the circuit breaker
-func (cb *CircuitBreaker) State() State {
-	cb.mutex.RLock()
-	defer cb.mutex.RUnlock()
-	return cb.state
-}
+// Execute runs the given function with circuit breaker protection
+func (b *Breaker) Execute(call ServiceCall) Result {
+	var result interface{}
+	var err error
 
-// Counts returns the current counts of the circuit breaker
-func (cb *CircuitBreaker) Counts() Counts {
-	cb.mutex.RLock()
-	defer cb.mutex.RUnlock()
-	return cb.counts
-}
+	err = b.cb.Execute(func() error {
+		var execErr error
+		result, execErr = call()
+		return execErr
+	})
 
-// IsCircuitBreakerError returns true if the error is a circuit breaker error
-func IsCircuitBreakerError(err error) bool {
-	return errors.Is(err, ErrCircuitBreakerOpen) || errors.Is(err, ErrTooManyRequests)
-}
-
-// HandleCircuitBreakerError returns appropriate HTTP status and message for circuit breaker errors
-func HandleCircuitBreakerError(err error) (int, string) {
-	if errors.Is(err, ErrCircuitBreakerOpen) || errors.Is(err, ErrTooManyRequests) {
-		return 503, "Service temporarily unavailable, please try again later"
+	return Result{
+		Data:  result,
+		Error: err,
 	}
-	return 500, "Internal Server Error"
+}
+
+// ExecuteContext runs the given function with circuit breaker protection and context
+func (b *Breaker) ExecuteContext(ctx context.Context, call ServiceCall) Result {
+	var result interface{}
+	var err error
+
+	select {
+	case <-ctx.Done():
+		return Result{Data: nil, Error: ctx.Err()}
+	default:
+		err = b.cb.Execute(func() error {
+			var execErr error
+			result, execErr = call()
+			return execErr
+		})
+	}
+
+	return Result{
+		Data:  result,
+		Error: err,
+	}
+}
+
+// IsCircuitBreakerError checks if the error is from the circuit breaker
+func IsCircuitBreakerError(err error) bool {
+	return err == ErrCircuitBreakerOpen || err == ErrTooManyRequests
+}
+
+// HandleCircuitBreakerError returns appropriate HTTP status code for circuit breaker errors
+func HandleCircuitBreakerError(err error) (int, string) {
+	if err == ErrCircuitBreakerOpen {
+		return http.StatusServiceUnavailable, "Service is temporarily unavailable"
+	}
+	if err == ErrTooManyRequests {
+		return http.StatusTooManyRequests, "Too many requests"
+	}
+	return http.StatusInternalServerError, "Internal server error"
 }

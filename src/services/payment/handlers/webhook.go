@@ -8,12 +8,12 @@ import (
 
 	"github.com/stripe/stripe-go/webhook"
 	brokerPkg "tixie.local/broker"
-	"tixie.local/common/circuitbreaker"
+	"tixie.local/common"
 )
 
 type WebhookHandler struct {
 	broker  *brokerPkg.Broker
-	breaker *circuitbreaker.CircuitBreaker
+	breaker *common.Breaker
 }
 
 type EmailMessage struct {
@@ -29,7 +29,7 @@ func NewWebhookHandler() *WebhookHandler {
 
 	return &WebhookHandler{
 		broker:  broker,
-		breaker: circuitbreaker.NewCircuitBreaker(circuitbreaker.DefaultSettings("payment-webhook-service")),
+		breaker: common.NewBreaker("payment-webhook-service"),
 	}
 }
 
@@ -62,8 +62,8 @@ func (h *WebhookHandler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 	if result.Error != nil {
 		logger.Printf("Webhook error: %v", result.Error)
 
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
-			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+		if common.IsCircuitBreakerError(result.Error) {
+			status, msg := common.HandleCircuitBreakerError(result.Error)
 			http.Error(w, msg, status)
 			return
 		}
@@ -97,8 +97,8 @@ func (h *WebhookHandler) SimulateWebhook(w http.ResponseWriter, r *http.Request)
 	if result.Error != nil {
 		logger.Printf("Failed to publish notification: %v", result.Error)
 
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
-			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+		if common.IsCircuitBreakerError(result.Error) {
+			status, msg := common.HandleCircuitBreakerError(result.Error)
 			http.Error(w, msg, status)
 			return
 		}

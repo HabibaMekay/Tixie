@@ -15,13 +15,13 @@ import (
 	"github.com/stripe/stripe-go"
 	"github.com/stripe/stripe-go/paymentintent"
 	brokerPkg "tixie.local/broker"
+	"tixie.local/common"
 	brokermsg "tixie.local/common/brokermsg"
-	"tixie.local/common/circuitbreaker"
 )
 
 type PaymentConsumer struct {
 	broker        *brokerPkg.Broker
-	breaker       *circuitbreaker.CircuitBreaker
+	breaker       *common.Breaker
 	numWorkers    int
 	prefetchCount int
 	processWg     sync.WaitGroup
@@ -51,7 +51,7 @@ func NewPaymentConsumer(rabbitmqURL string, config ConsumerConfig) (*PaymentCons
 
 	return &PaymentConsumer{
 		broker:        broker,
-		breaker:       circuitbreaker.NewCircuitBreaker(circuitbreaker.DefaultSettings("payment-consumer-service")),
+		breaker:       common.NewBreaker("payment-consumer-service"),
 		numWorkers:    config.NumWorkers,
 		prefetchCount: config.PrefetchCount,
 		ctx:           ctx,
@@ -95,7 +95,7 @@ func (c *PaymentConsumer) processMessage(msg amqp.Delivery) {
 	})
 
 	if result.Error != nil {
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+		if common.IsCircuitBreakerError(result.Error) {
 			log.Printf("Circuit breaker error: %v", result.Error)
 			// Requeue the message when circuit breaker is triggered for retry mechanisms to work
 			msg.Reject(true)

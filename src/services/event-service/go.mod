@@ -5,7 +5,7 @@ go 1.23
 require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/lib/pq v1.10.9
-	tixie.local/common/circuitbreaker v0.0.0
+	tixie.local/common v0.0.0
 )
 
 require (
@@ -39,4 +39,4 @@ require (
 
 replace tixie.local/common => ../common
 
-replace tixie.local/common/circuitbreaker => ../common/circuitbreaker
+
