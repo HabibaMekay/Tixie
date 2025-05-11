@@ -4,6 +4,7 @@ WORKDIR /src/event
 
 # Copy dependency files
 COPY event-service/go.mod event-service/go.sum ./
+COPY broker /src/broker
 COPY common /src/common
 
 # Download dependencies

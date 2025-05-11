@@ -18,9 +18,8 @@ const (
 	// Notification related topics
 	TopicNotificationEmail = "notification.email"
 
-	// Audit and analytics
-	TopicAuditLog       = "audit.log"
-	TopicAnalyticsEvent = "analytics.event"
+	// Event related topics
+	TopicEventCreated = "event.created"
 )
 
 // Message structures
@@ -64,7 +63,6 @@ type PaymentFailedMessage struct {
 type TicketIssuedMessage struct {
 	TicketID       int    `json:"ticket_id"`
 	TicketCode     string `json:"ticket_code"`
-	ReservationID  int    `json:"reservation_id"`
 	UserID         int    `json:"user_id"`
 	EventID        int    `json:"event_id"`
 	RecipientEmail string `json:"recipient_email"`
@@ -78,19 +76,13 @@ type EmailNotificationMessage struct {
 	TemplateData   map[string]interface{} `json:"template_data"`
 }
 
-// AuditLogMessage is published for audit logging
-type AuditLogMessage struct {
-	Action     string                 `json:"action"`
-	UserID     int                    `json:"user_id"`
-	EntityType string                 `json:"entity_type"`
-	EntityID   int                    `json:"entity_id"`
-	Timestamp  int64                  `json:"timestamp"` // Unix timestamp
-	Details    map[string]interface{} `json:"details"`
-}
-
-// AnalyticsEventMessage is published for analytics
-type AnalyticsEventMessage struct {
-	EventType string                 `json:"event_type"`
-	Timestamp int64                  `json:"timestamp"` // Unix timestamp
-	Metadata  map[string]interface{} `json:"metadata"`
+// EventCreatedMessage is published when a new event is created
+type EventCreatedMessage struct {
+	Name               string  `json:"name"`
+	Date               string  `json:"date"`
+	Venue              string  `json:"venue"`
+	TotalTickets       int     `json:"total_tickets"`
+	VendorID           int     `json:"vendor_id"`
+	Price              float64 `json:"price"`
+	ReservationTimeout int     `json:"reservation_timeout"`
 }

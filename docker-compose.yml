@@ -51,6 +51,12 @@ services:
     depends_on:
       ticket-db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      retries: 5
     environment:
       - DOCKER_COMPOSE=true
       - DB_HOST=${DB_HOST}
@@ -61,6 +67,7 @@ services:
       - DB_SSLMODE=${DB_SSLMODE}
       - USER_SERVICE_URL=${USER_SERVICE_1}
       - EVENT_SERVICE_URL=${EVENT_SERVICE_1}
+      - USER_SERVICE_URL=${USER_SERVICE_1}
     networks:
       - db-network
       - gateway1-net
@@ -77,6 +84,12 @@ services:
     depends_on:
       ticket-db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      retries: 5
     environment:
       - DOCKER_COMPOSE=true
       - DB_HOST=${DB_HOST}
@@ -85,6 +98,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
       - DB_SSLMODE=${DB_SSLMODE}
+      - USER_SERVICE_URL=${USER_SERVICE_2}
     networks:
       - db-network
       - gateway2-net
@@ -100,6 +114,12 @@ services:
     depends_on:
       ticket-db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      retries: 5
     environment:
       - DOCKER_COMPOSE=true
       - DB_HOST=${DB_HOST}
@@ -108,6 +128,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
       - DB_SSLMODE=${DB_SSLMODE}
+      - USER_SERVICE_URL=${USER_SERVICE_3}
     networks:
       - db-network
       - gateway3-net
@@ -411,6 +432,12 @@ services:
     depends_on:
       event-db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      retries: 5
     environment:
       - DOCKER_COMPOSE=true
       - DB_EVENT_HOST=${DB_EVENT_HOST}
@@ -435,6 +462,12 @@ services:
     depends_on:
       event-db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      retries: 5
     environment:
       - DOCKER_COMPOSE=true
       - DB_EVENT_HOST=${DB_EVENT_HOST}
@@ -458,6 +491,12 @@ services:
     depends_on:
       event-db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      retries: 5
     environment:
       - DOCKER_COMPOSE=true
       - DB_EVENT_HOST=${DB_EVENT_HOST}
@@ -496,6 +535,12 @@ services:
     depends_on:
        vendor-db:
            condition: service_healthy
+       rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      retries: 5
     environment:
       - DOCKER_COMPOSE=true
       - DB_VENDOR_HOST=${DB_VENDOR_HOST}
@@ -520,6 +565,12 @@ services:
     depends_on:
        vendor-db:
            condition: service_healthy
+       rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      retries: 5
     environment:
       - DOCKER_COMPOSE=true
       - DB_VENDOR_HOST=${DB_VENDOR_HOST}
@@ -544,6 +595,12 @@ services:
     depends_on:
        vendor-db:
            condition: service_healthy
+       rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      retries: 5
     environment:
       - DOCKER_COMPOSE=true
       - DB_VENDOR_HOST=${DB_VENDOR_HOST}

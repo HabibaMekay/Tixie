@@ -5,13 +5,13 @@ FROM golang:1.23-alpine AS builder
 RUN apk add --no-cache git
 
 # Set working directory
-WORKDIR /app
+WORKDIR /src/ticket
 
 # Copy go mod and sum
 COPY ticket-service/go.mod ticket-service/go.sum ./
 
-# Copy common module
-COPY common /common
+COPY broker /src/broker
+COPY common /src/common
 
 # Download dependencies
 RUN go mod download
@@ -25,13 +25,12 @@ RUN go build -o ticket-service ./cmd/main.go
 # Final stage: minimal runtime image
 FROM alpine:latest
 
-# Install ca-certificates for HTTPS connections (important for DBs & APIs)
 RUN apk add --no-cache ca-certificates
 
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /app/ticket-service .
+COPY --from=builder /src/ticket/ticket-service .
 
 # Expose the port your Gin app runs on
 EXPOSE 8082

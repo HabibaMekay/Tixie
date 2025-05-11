@@ -1,31 +1,30 @@
 package api
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"log"
 	"net/http"
 	"strconv"
-	"vendor-service/config"
 	"vendor-service/internal/db/models"
 	"vendor-service/internal/db/repos"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
+	brokerPkg "tixie.local/broker"
 	circuitbreaker "tixie.local/common"
+	brokermsg "tixie.local/common/brokermsg"
 )
 
 type Handler struct {
 	repo                *repos.VendorRepository
 	eventServiceBreaker *circuitbreaker.Breaker
+	broker              *brokerPkg.Broker
 }
 
-func NewHandler(repo *repos.VendorRepository) *Handler {
+func NewHandler(repo *repos.VendorRepository, broker *brokerPkg.Broker) *Handler {
 	return &Handler{
 		repo:                repo,
 		eventServiceBreaker: circuitbreaker.NewBreaker("event-service-client"),
+		broker:              broker,
 	}
 }
 
@@ -162,13 +161,13 @@ func (h *Handler) AuthenticateVendor(c *gin.Context) {
 }
 
 func (h *Handler) CreateVendorEvent(c *gin.Context) {
-	vendorName := c.GetHeader("username")
-	if vendorName == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing vendor information"})
+	username := c.GetHeader("username")
+	if username == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing username header"})
 		return
 	}
 
-	vendorID, err := h.repo.GetVendorIDByName(vendorName)
+	vendorID, err := h.repo.GetVendorIDByName(username)
 	if err != nil {
 		if err.Error() == "vendor not found" {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Vendor not found"})
@@ -183,41 +182,24 @@ func (h *Handler) CreateVendorEvent(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event input"})
 		return
 	}
-	event.VendorID = vendorID
 
-	jsonData, err := json.Marshal(event)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error marshalling event data"})
-		return
+	// Create event message
+	eventMsg := brokermsg.EventCreatedMessage{
+		Name:               event.Name,
+		Date:               event.Date,
+		Venue:              event.Location,
+		TotalTickets:       event.TotalTickets,
+		VendorID:           vendorID,
+		Price:              event.Price,
+		ReservationTimeout: event.ReservationTimeout,
 	}
 
-	var resp *http.Response
-	result := h.eventServiceBreaker.Execute(func() (interface{}, error) {
-		var err error
-		resp, err = http.Post(config.AppConfig.EventServiceURL+"/v1", "application/json", bytes.NewBuffer(jsonData))
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusCreated {
-			return nil, fmt.Errorf("event service returned status: %d", resp.StatusCode)
-		}
-
-		return resp, nil
-	})
-
-	if result.Error != nil {
-		if circuitbreaker.IsCircuitBreakerError(result.Error) {
-			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
-			log.Printf("Circuit breaker error when calling event service: %v", result.Error)
-			c.JSON(status, gin.H{"error": msg})
-			return
-		}
-		log.Printf("Error calling event service: %v", result.Error)
+	// Publish event creation message
+	err = h.broker.Publish(eventMsg, brokermsg.TopicEventCreated)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create event"})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "Event created successfully"})
+	c.Status(http.StatusCreated)
 }

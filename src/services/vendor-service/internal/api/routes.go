@@ -3,11 +3,18 @@ package api
 import (
 	"vendor-service/internal/db/repos"
 
+	brokerPkg "tixie.local/broker"
+
 	"github.com/gin-gonic/gin"
 )
 
 func SetupRoutes(r *gin.Engine, repo *repos.VendorRepository) {
-	handler := NewHandler(repo)
+	broker, err := brokerPkg.NewBroker("amqp://guest:guest@rabbitmq:5672/", "vendor-service", "topic")
+	if err != nil {
+		panic(err)
+	}
+
+	handler := NewHandler(repo, broker)
 
 	vendors := r.Group("/v1")
 	{

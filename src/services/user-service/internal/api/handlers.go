@@ -283,3 +283,45 @@ func (h *Handler) AuthenticateUser(c *gin.Context) {
 	logger.Println("User logged in successfully")
 	c.Status(http.StatusOK)
 }
+
+func (h *Handler) GetEmail(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		logger.Printf("Invalid user ID: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	result := h.breaker.Execute(func() (interface{}, error) {
+		return h.repo.GetUserByID(id)
+	})
+
+	if result.Error != nil {
+		logger.Printf("Error retrieving user by ID %d: %v", id, result.Error)
+
+		if circuitbreaker.IsCircuitBreakerError(result.Error) {
+			status, msg := circuitbreaker.HandleCircuitBreakerError(result.Error)
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	user, ok := result.Data.(models.User)
+	if !ok {
+		logger.Printf("Unexpected data type in breaker result: %+v", result.Data)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	if user.ID == 0 {
+		logger.Printf("User with ID %d not found", id)
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	logger.Printf("email for user with ID %d found successfully", id)
+	c.JSON(http.StatusOK, gin.H{"email": user.Email})
+}

@@ -7,6 +7,7 @@ WORKDIR /src/vendor
 COPY vendor-service/go.mod vendor-service/go.sum ./
 
 # Copy common module with correct structure
+COPY broker /src/broker
 COPY common /src/common
 
 # Download dependencies

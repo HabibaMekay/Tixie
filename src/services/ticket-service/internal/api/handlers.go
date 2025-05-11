@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	brokerPkg "tixie.local/broker"
 	circuitbreaker "tixie.local/common"
 )
 
@@ -35,16 +37,17 @@ type Handler struct {
 	repo       *repos.TicketRepository
 	httpClient *http.Client
 	breaker    *circuitbreaker.Breaker
+	broker     *brokerPkg.Broker
 }
 
-// NewHandler creates a new Handler with dependencies.
-func NewHandler(repo *repos.TicketRepository) *Handler {
+func NewHandler(repo *repos.TicketRepository, broker *brokerPkg.Broker) *Handler {
 	return &Handler{
 		repo: repo,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
 		breaker: circuitbreaker.NewBreaker("ticket-service"),
+		broker:  broker,
 	}
 }
 
@@ -167,6 +170,37 @@ func (h *Handler) CreateTicket(c *gin.Context) {
 	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
+	}
+	log.Printf("Fetching email for userID: %d", input.UserID)
+	userServiceURL := os.Getenv("USER_SERVICE_URL")
+	userEmail := ""
+	if userServiceURL != "" {
+		resp, err := h.httpClient.Get(fmt.Sprintf("%s/v1/email/%d", userServiceURL, input.UserID))
+		if err == nil && resp.StatusCode == http.StatusOK {
+			var emailResp struct {
+				Email string `json:"email"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&emailResp); err == nil {
+				userEmail = emailResp.Email
+			}
+			resp.Body.Close()
+		} else {
+			log.Printf("Failed to fetch user email for ticket issued message: %v", err)
+		}
+	}
+
+	emailMsg := struct {
+		RecipientEmail string `json:"recipient_email"`
+		TicketID       string `json:"ticket_id"`
+	}{
+		RecipientEmail: userEmail,
+		TicketID:       createdTicket.TicketCode,
+	}
+
+	if h.broker != nil {
+		if err := h.broker.Publish(emailMsg, "email"); err != nil {
+			log.Printf("Failed to publish email notification: %v", err)
+		}
 	}
 
 	c.JSON(http.StatusCreated, createdTicket)

@@ -147,11 +147,10 @@ func (r *EventRepository) ReserveTicket(eventID int) error {
 			TotalTickets    int `json:"total_tickets"`
 			SoldTickets     int `json:"sold_tickets"`
 			TicketsReserved int `json:"tickets_reserved"`
-			TicketsLeft     int `json:"tickets_left"`
 		}
 
 		// Get current event state with row lock (FOR UPDATE ensures exclusive access)
-		query := `SELECT total_tickets, sold_tickets, tickets_reserved, tickets_left 
+		query := `SELECT total_tickets, sold_tickets, tickets_reserved 
 				  FROM events 
 				  WHERE id = $1 
 				  FOR UPDATE`
@@ -159,7 +158,6 @@ func (r *EventRepository) ReserveTicket(eventID int) error {
 			&event.TotalTickets,
 			&event.SoldTickets,
 			&event.TicketsReserved,
-			&event.TicketsLeft,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("event not found: %v", err)
@@ -171,10 +169,9 @@ func (r *EventRepository) ReserveTicket(eventID int) error {
 			return nil, fmt.Errorf("no tickets available")
 		}
 
-		// Update reserved count and available tickets
+		// Update only tickets_reserved - tickets_left will be updated automatically
 		query = `UPDATE events 
-				 SET tickets_reserved = tickets_reserved + 1,
-				     tickets_left = tickets_left - 1
+				 SET tickets_reserved = tickets_reserved + 1
 				 WHERE id = $1`
 		_, err = tx.Exec(query, eventID)
 		if err != nil {

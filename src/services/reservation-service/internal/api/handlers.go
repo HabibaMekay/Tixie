@@ -294,7 +294,6 @@ func (h *Handler) CompleteReservation(c *gin.Context) {
 		return
 	}
 
-	// Step 1: Get the reservation to verify it exists and is still pending
 	result := h.breaker.Execute(func() (interface{}, error) {
 		reservation, err := h.reserveRepo.GetReservation(input.ReservationID)
 		if err != nil {
@@ -319,7 +318,6 @@ func (h *Handler) CompleteReservation(c *gin.Context) {
 		return
 	}
 
-	// Check if the reservation is still valid
 	if reservation.Status != "pending" {
 		c.JSON(http.StatusConflict, gin.H{"error": "Reservation is no longer valid"})
 		return
@@ -330,7 +328,6 @@ func (h *Handler) CompleteReservation(c *gin.Context) {
 		return
 	}
 
-	// Step 2: Convert reservation to a completed ticket in the event service
 	result = h.breaker.Execute(func() (interface{}, error) {
 		resp, err := h.httpClient.Post(
 			fmt.Sprintf("%s/v1/%d/complete-reservation", os.Getenv("EVENT_SERVICE_URL"), reservation.EventID),
@@ -359,7 +356,6 @@ func (h *Handler) CompleteReservation(c *gin.Context) {
 		return
 	}
 
-	// Step 3: Get event details to get the price
 	result = h.breaker.Execute(func() (interface{}, error) {
 		resp, err := h.httpClient.Get(fmt.Sprintf("%s/v1/%d", os.Getenv("EVENT_SERVICE_URL"), reservation.EventID))
 		if err != nil {
@@ -398,21 +394,41 @@ func (h *Handler) CompleteReservation(c *gin.Context) {
 		return
 	}
 
-	// Step 4: Mark the reservation as completed in our database
 	err := h.reserveRepo.CompleteReservation(input.ReservationID)
 	if err != nil {
 		log.Printf("Warning: Failed to mark reservation as completed: %v", err)
-		// Continue anyway, as this is not critical for the user experience
 	}
 
-	// Step 5: Publish reservation completed message for payment processing
+	ticketServiceURL := os.Getenv("TICKET_SERVICE_URL")
+	if ticketServiceURL != "" {
+		payload := struct {
+			EventID int `json:"event_id"`
+			UserID  int `json:"user_id"`
+		}{
+			EventID: reservation.EventID,
+			UserID:  reservation.UserID,
+		}
+		body, _ := json.Marshal(payload)
+		resp, err := h.httpClient.Post(
+			fmt.Sprintf("%s/v1", ticketServiceURL),
+			"application/json",
+			bytes.NewBuffer(body),
+		)
+		if err != nil {
+			log.Printf("Failed to call ticket service: %v", err)
+		} else {
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusCreated {
+				log.Printf("Ticket service returned status %d", resp.StatusCode)
+			}
+		}
+	}
+
 	if h.broker != nil {
-		// Create reservation completed message using common message structure
 		completionMsg := brokermsg.ReservationCompletedMessage{
 			ReservationID: input.ReservationID,
 			EventID:       reservation.EventID,
 			UserID:        reservation.UserID,
-			Amount:        int(eventDetails.Price * 100), // Convert to cents
 		}
 
 		err := h.broker.Publish(completionMsg, brokermsg.TopicReservationCompleted)
@@ -426,7 +442,7 @@ func (h *Handler) CompleteReservation(c *gin.Context) {
 		"reservation_id": input.ReservationID,
 		"event_id":       reservation.EventID,
 		"user_id":        reservation.UserID,
-		"amount":         int(eventDetails.Price * 100), // Return amount in cents
+		"amount":         int(eventDetails.Price),
 	})
 }
 

@@ -1,15 +1,21 @@
 module vendor-service
 
-go 1.23.0
+go 1.23.6
 
-toolchain go1.23.6
+toolchain go1.24.0
 
 require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/lib/pq v1.10.9
 	golang.org/x/crypto v0.37.0
+	tixie.local/broker v0.0.0
 	tixie.local/common v0.0.0
+	tixie.local/common/brokermsg v0.0.0
 )
+
+replace tixie.local/broker => ../broker
+
+replace tixie.local/common/brokermsg => ../common/brokermsg
 
 replace tixie.local/common => ../common
 
@@ -31,6 +37,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
+	github.com/rabbitmq/amqp091-go v1.10.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	golang.org/x/arch v0.8.0 // indirect

@@ -4,11 +4,16 @@ import (
 	"ticket-service/internal/db/repos"
 
 	"github.com/gin-gonic/gin"
+	brokerPkg "tixie.local/broker"
 )
 
 func SetupRoutes(r *gin.Engine, repo *repos.TicketRepository) {
 
-	handler := NewHandler(repo)
+	broker, err := brokerPkg.NewBroker("amqp://guest:guest@rabbitmq:5672/", "notification", "topic")
+	if err != nil {
+		panic(err)
+	}
+	handler := NewHandler(repo, broker)
 
 	// API routes for tickets
 	tickets := r.Group("/v1")
